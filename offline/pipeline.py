@@ -29,9 +29,10 @@ from sklearn.cluster import KMeans
 from tqdm import tqdm
 
 
-REPO_ROOT = Path(__file__).resolve().parent
-SSL_ROOT = REPO_ROOT / "offline" / "SSL"
-DSE_ROOT = REPO_ROOT / "offline" / "DSE"
+OFFLINE_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = OFFLINE_ROOT.parent
+SSL_ROOT = OFFLINE_ROOT / "SSL"
+DSE_ROOT = OFFLINE_ROOT / "DSE"
 
 sys.path.insert(0, str(SSL_ROOT))
 from IPDnet2_3spk import OnlineSpatialNet  # noqa: E402
@@ -321,16 +322,20 @@ def load_dsenet(ckpt_path: Path, device: str) -> TrainModule:
     return model
 
 
-def enhance_one_doa(
+def enhance_doa_batch(
     dse_model: TrainModule,
     noisy_ct: torch.Tensor,
-    doa_value: int,
+    doa_values: Sequence[int],
     width_value: int,
     device: str,
-) -> np.ndarray:
-    x = noisy_ct.unsqueeze(0).float().to(device)  # [1, C, T]
-    doa = torch.tensor([doa_value], dtype=torch.long, device=device)
-    width = torch.tensor([width_value], dtype=torch.long, device=device)
+) -> List[np.ndarray]:
+    batch_size = len(doa_values)
+    if batch_size == 0:
+        return []
+
+    x = noisy_ct.unsqueeze(0).repeat(batch_size, 1, 1).float().to(device)  # [B, C, T]
+    doa = torch.tensor(doa_values, dtype=torch.long, device=device)  # [B]
+    width = torch.full((batch_size,), width_value, dtype=torch.long, device=device)  # [B]
 
     with torch.inference_mode():
         yr_hat = dse_model.forward(x, doa, width)
@@ -341,7 +346,11 @@ def enhance_one_doa(
                 scale_src_together=True,
                 norm_if_exceed_1=False,
             )
-    return yr_hat[0, 0].detach().cpu().numpy().astype(np.float32)
+
+    return [
+        yr_hat[idx, 0].detach().cpu().numpy().astype(np.float32)
+        for idx in range(batch_size)
+    ]
 
 
 @dataclass
@@ -365,12 +374,13 @@ class TargetResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run IPDNet2 -> DSENet -> Whisper in one process.")
-    parser.add_argument("--mic_dir", type=Path, default=REPO_ROOT / "data" / "dataset_4mic_3spk" / "Eval" / "mic")
-    parser.add_argument("--text_dir", type=Path, default=REPO_ROOT / "data" / "dataset_4mic_3spk" / "Eval" / "text")
+    parser.add_argument("--mic_dir", type=Path, default=PROJECT_ROOT / "data" / "dataset_4mic_3spk" / "Eval" / "mic")
+    parser.add_argument("--text_dir", type=Path, default=PROJECT_ROOT / "data" / "dataset_4mic_3spk" / "Eval" / "text")
     parser.add_argument("--ipd_ckpt", type=Path, default=SSL_ROOT / "checkpoints" / "ipdnet2_23.ckpt")
     parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "DSE_96.ckpt")
-    parser.add_argument("--out_dir", type=Path, default=REPO_ROOT / "results")
-    parser.add_argument("--whisper_model", type=str, default="turbo")
+    parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results")
+    parser.add_argument("--whisper_model", type=str, default="small")
+    parser.add_argument("--whisper_device", type=str, default="cpu")
     parser.add_argument("--language", type=str, default="en")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--sample_rate", type=int, default=16000)
@@ -378,6 +388,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vad_th", type=float, default=0.2)
     parser.add_argument("--min_points_per_source", type=int, default=3)
     parser.add_argument("--width", type=int, default=30)
+    parser.add_argument(
+        "--dse_batch_size",
+        type=int,
+        default=1,
+        help="How many DOAs to enhance per DSENet forward pass. Use 3 for speed, 1 for lower VRAM.",
+    )
     parser.add_argument("--max_items", type=int, default=0, help="Limit target wav files for a quick test; 0 means all.")
     parser.add_argument("--save_enhanced", action="store_true", help="Also save enhanced wavs for inspection.")
     return parser.parse_args()
@@ -397,14 +413,16 @@ def main() -> None:
         enhanced_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Device: {args.device}")
+    print(f"Whisper device: {args.whisper_device}")
+    print(f"DSENet batch size: {args.dse_batch_size}")
     print(f"Mic input folder: {args.mic_dir}")
     print(f"Ground-truth text folder: {args.text_dir}")
     print("Loading IPDNet2 once...")
     ipd_model, doa_decoder = load_ipdnet2(args.ipd_ckpt, args.device)
     print("Loading DSENet once...")
     dse_model = load_dsenet(args.dse_ckpt, args.device)
-    print(f"Loading Whisper once: {args.whisper_model}")
-    whisper_model = whisper.load_model(args.whisper_model, device=args.device)
+    print(f"Loading Whisper once: {args.whisper_model} on {args.whisper_device}")
+    whisper_model = whisper.load_model(args.whisper_model, device=args.whisper_device)
 
     target_files = unique_mic_files(args.mic_dir, args.max_items)
     grouped = group_targets_by_fileid(target_files)
@@ -443,6 +461,7 @@ def main() -> None:
             print(f"fileid={fileid}: no usable SSL DOA, skipped {len(target_paths)} target(s).")
             continue
 
+        valid_targets = []
         for target_path in target_paths:
             text_path = make_text_name_from_mic(target_path, args.text_dir)
             if not text_path.is_file():
@@ -456,19 +475,47 @@ def main() -> None:
                 skipped_no_doa += 1
                 continue
 
-            enhanced, dse_sec = elapsed_seconds(
+            valid_targets.append((target_path, text_path, gt_doa, pred_doa))
+
+        if not valid_targets:
+            continue
+
+        batched_pred_doas = [item[3] for item in valid_targets]
+        dse_batch_size = len(batched_pred_doas) if args.dse_batch_size <= 0 else args.dse_batch_size
+        enhanced_batch = []
+        dse_sec = 0.0
+
+        for start in range(0, len(batched_pred_doas), dse_batch_size):
+            doa_chunk = batched_pred_doas[start:start + dse_batch_size]
+            enhanced_chunk, dse_chunk_sec = elapsed_seconds(
                 args.device,
-                lambda: enhance_one_doa(dse_model, noisy_ct, pred_doa, args.width, args.device),
+                lambda doa_chunk=doa_chunk: enhance_doa_batch(
+                    dse_model,
+                    noisy_ct,
+                    doa_chunk,
+                    args.width,
+                    args.device,
+                ),
             )
+            enhanced_batch.extend(enhanced_chunk)
+            dse_sec += dse_chunk_sec
+            if args.device.startswith("cuda") and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        for (target_path, text_path, gt_doa, pred_doa), enhanced in zip(valid_targets, enhanced_batch):
 
             if args.save_enhanced:
                 save_name = f"enhanced_fileid_{fileid}_gt{gt_doa}_pred{pred_doa}_spk{parse_spk(text_path)}.wav"
                 sf.write(str(enhanced_dir / save_name), enhanced, sr)
 
             def run_asr():
-                return whisper_model.transcribe(enhanced, language=args.language, fp16=args.device.startswith("cuda"))
+                return whisper_model.transcribe(
+                    enhanced,
+                    language=args.language,
+                    fp16=args.whisper_device.startswith("cuda"),
+                )
 
-            asr_out, whisper_sec = elapsed_seconds(args.device, run_asr)
+            asr_out, whisper_sec = elapsed_seconds(args.whisper_device, run_asr)
             hyp_text = asr_out.get("text", "").strip()
             ref_text = text_path.read_text(encoding="utf-8").strip()
             sample_wer, dist, ref_words = wer(ref_text, hyp_text)
@@ -513,6 +560,7 @@ def main() -> None:
         "ipd_ckpt": str(args.ipd_ckpt),
         "dse_ckpt": str(args.dse_ckpt),
         "whisper_model": args.whisper_model,
+        "whisper_device": args.whisper_device,
         "device": args.device,
         "target_wav_entries": len(target_files),
         "unique_fileid_groups": len(grouped),

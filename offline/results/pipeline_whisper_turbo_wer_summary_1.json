@@ -1,0 +1,19 @@
+{
+  "mic_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/mic",
+  "text_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/text",
+  "ipd_ckpt": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/offline/SSL/checkpoints/ipdnet2_23.ckpt",
+  "dse_ckpt": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/offline/DSE/DSE_96.ckpt",
+  "whisper_model": "turbo",
+  "device": "cuda",
+  "target_wav_entries": 1200,
+  "unique_fileid_groups": 400,
+  "evaluated_items": 1200,
+  "missing_text": 0,
+  "skipped_no_doa": 0,
+  "corpus_wer": 0.4101478106483561,
+  "mean_sample_wer": 0.41893586542042643,
+  "mean_ipdnet2_sec": 0.1397618173024716,
+  "mean_dsenet_sec": 7.166718792851686,
+  "mean_whisper_sec": 0.5128273032549888,
+  "mean_total_target_sec": 7.819307913409146
+}
