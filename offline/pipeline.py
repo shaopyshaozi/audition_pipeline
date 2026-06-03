@@ -31,8 +31,9 @@ from tqdm import tqdm
 
 OFFLINE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = OFFLINE_ROOT.parent
-SSL_ROOT = OFFLINE_ROOT / "SSL"
-DSE_ROOT = OFFLINE_ROOT / "DSE"
+MODELS_ROOT = PROJECT_ROOT / "Models"
+SSL_ROOT = MODELS_ROOT / "SSL"
+DSE_ROOT = MODELS_ROOT / "DSE"
 
 sys.path.insert(0, str(SSL_ROOT))
 from IPDnet2_3spk import OnlineSpatialNet  # noqa: E402

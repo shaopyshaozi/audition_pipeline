@@ -36,8 +36,9 @@ from tqdm import tqdm
 
 OFFLINE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = OFFLINE_ROOT.parent
-SSL_ROOT = OFFLINE_ROOT / "SSL"
-DSE_ROOT = OFFLINE_ROOT / "DSE"
+MODELS_ROOT = PROJECT_ROOT / "Models"
+SSL_ROOT = MODELS_ROOT / "SSL"
+DSE_ROOT = MODELS_ROOT / "DSE"
 DSENET_DATA_ROOT = PROJECT_ROOT/ "data" / "dataset_4mic_3spk_4s"
 
 sys.path.insert(0, str(SSL_ROOT))
@@ -506,7 +507,7 @@ def main() -> None:
             )
         )
 
-    details_csv = args.out_dir / f"pipeline_realtime_{args.whisper_model}_details.csv"
+    details_csv = args.out_dir / f"pipeline_realtime_{args.whisper_model}_details_1asr.csv"
     with details_csv.open("w", newline="", encoding="utf-8") as f:
         fieldnames = list(SceneTiming.__dataclass_fields__.keys())
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -551,7 +552,7 @@ def main() -> None:
         "under_realtime_rate": float(np.mean([r.under_realtime for r in scene_results])) if scene_results else 0.0,
     }
 
-    summary_json = args.out_dir / f"pipeline_realtime_{args.whisper_model}_summary.json"
+    summary_json = args.out_dir / f"pipeline_realtime_{args.whisper_model}_summary_1asr.json"
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print("\n===== REALTIME SUMMARY =====")

@@ -36,8 +36,9 @@ from tqdm import tqdm
 
 OFFLINE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = OFFLINE_ROOT.parent
-SSL_ROOT = OFFLINE_ROOT / "SSL"
-DSE_ROOT = OFFLINE_ROOT / "DSE"
+MODELS_ROOT = PROJECT_ROOT / "Models"
+SSL_ROOT = MODELS_ROOT / "SSL"
+DSE_ROOT = MODELS_ROOT / "DSE"
 DSENET_DATA_ROOT = PROJECT_ROOT/ "data" / "dataset_4mic_3spk_4s"
 
 sys.path.insert(0, str(SSL_ROOT))
@@ -324,7 +325,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "DSE_96.ckpt")
     parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results")
     parser.add_argument("--whisper_model", type=str, default="small")
-    parser.add_argument("--whisper_device", type=str, default="cpu")
+    parser.add_argument("--whisper_device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--language", type=str, default="en")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--sample_rate", type=int, default=16000)
