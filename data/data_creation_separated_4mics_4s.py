@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-ASR dataset creation 6 speakers with complete audio clip from LribiSpeech + noise from DEMAND
-With ground turth transcripts.
+ASR dataset creation with 3 overlapping speakers:
+one dominant target speaker and two quieter background speakers.
+Fixed 4-second clips.
+4 MICS Respeaker version---------------------------------------------------------------------
 Valid for ASR evaluation only
 
 
@@ -10,23 +12,23 @@ What this script generates
 dataset_root/
     clean/
     mic/
-    text/
 
 Filename convention
 ---------------------------
 clean_fileid_<sceneid>_doa<angle>_spk<k>.wav
-mic_fileid_<sceneid>_doa<angle>_6spk.wav
-text_fileid_<sceneid>_doa<angle>_spk<k>.txt
+mic_fileid_<sceneid>_doa<angle>_3spk.wav
 
 Notes
 -----
-- One acoustic scene contains 6 simultaneous speakers + 1 independent noise source.
-- From one scene, we generate up to 6 stage-1 training items, one target speaker at a time.
+- One acoustic scene contains 3 simultaneous speakers + 1 independent noise source.
+- From one scene, we generate up to 3 stage-1 training items, one target speaker at a time.
 - The same multichannel mixture may be saved multiple times under different DOA-specific
   filenames so it matches the trainer's path reconstruction logic.
 - The target ("clean") file is saved as MONO: the reverberant target speaker at the reference mic.
   This is acceptable because the trainer repeats mono clean to match channels if needed.
 - Width is omitted in stage 1; the trainer will automatically use width=30.
+- Text transcripts are not generated. After trimming to a fixed 4-second window, LibriSpeech
+  sentence-level transcripts are no longer reliably aligned without word-level timestamps.
 
 Requirements
 ------------
@@ -72,8 +74,8 @@ class GenConfig:
     output_root: Path
     sample_rate: int = 16000
     n_speakers: int = 3
-    n_mics: int = 3
-    mic_radius_m: float = 0.03
+    n_mics: int = 4
+    mic_radius_m: float = 0.031
     room_w_min: float = 6.0
     room_w_max: float = 9.0
     room_d_min: float = 6.0
@@ -85,8 +87,14 @@ class GenConfig:
     mic_height_m: float = 1.0
     source_z_min: float = 1.0
     source_z_max: float = 1.8
-    rms_db_min: float = -20.0
-    rms_db_max: float = -15.0
+    dominant_rms_db: float = -15.0
+    background_rms_db_min: float = -25.0
+    background_rms_db_max: float = -20.0
+    source_radius_m: float = 2.0
+
+    clip_duration_sec: float = 4.0
+    max_length_diff_sec: float = 5.0
+    min_doa_sep_deg: float = 30.0
     ref_mic: int = 0
     random_seed: int = 42
     audio_exts: Tuple[str, ...] = (".wav", ".flac", ".mp3")
@@ -127,25 +135,6 @@ def read_audio_mono(path: Path, target_sr: int) -> np.ndarray:
     return wav
 
 
-def crop_or_tile(sig: np.ndarray, target_len: int) -> np.ndarray:
-    if sig.ndim != 1:
-        raise ValueError("Expected mono signal")
-    if len(sig) == 0:
-        raise ValueError("Empty audio signal")
-
-    if len(sig) < target_len:
-        repeats = target_len // len(sig)
-        rem = target_len % len(sig)
-        pieces = [sig] * repeats
-        if rem > 0:
-            pieces.append(sig[:rem])
-        out = np.concatenate(pieces, axis=0)
-    else:
-        start = random.randint(0, len(sig) - target_len)
-        out = sig[start:start + target_len]
-    return out.astype(np.float32)
-
-
 def rms(sig: np.ndarray) -> float:
     return float(np.sqrt(np.mean(np.square(sig)) + 1e-12))
 
@@ -165,15 +154,62 @@ def peak_normalize(sig: np.ndarray, peak: float = 0.95) -> np.ndarray:
     return (sig * (peak / maxv)).astype(np.float32)
 
 
-def circular_mic_positions_3d(center_xyz: np.ndarray, radius: float, n_mics: int) -> np.ndarray:
+def fit_to_num_samples(sig: np.ndarray, num_samples: int, time_axis: int = -1) -> np.ndarray:
     """
-    Returns mic positions as shape [3, M], matching pyroomacoustics.
+    Trim or zero-pad an array so its time axis is exactly num_samples.
     """
-    phis = np.linspace(0, 2 * np.pi, n_mics, endpoint=False)
-    xs = center_xyz[0] + radius * np.cos(phis)
-    ys = center_xyz[1] + radius * np.sin(phis)
-    zs = np.full_like(xs, center_xyz[2])
-    return np.vstack([xs, ys, zs]).astype(np.float64)
+    current = sig.shape[time_axis]
+    if current == num_samples:
+        return sig.astype(np.float32)
+
+    if current > num_samples:
+        slices = [slice(None)] * sig.ndim
+        slices[time_axis] = slice(0, num_samples)
+        return sig[tuple(slices)].astype(np.float32)
+
+    pad_width = [(0, 0)] * sig.ndim
+    pad_width[time_axis] = (0, num_samples - current)
+    return np.pad(sig, pad_width, mode="constant").astype(np.float32)
+
+
+def respeaker_4mic_positions_3d(
+    center_xyz: np.ndarray,
+    radius: float = 0.031,
+) -> np.ndarray:
+    """
+    ReSpeaker 4-mic physical geometry.
+
+    Coordinate convention from Seeed image:
+        DOA 0   = right  (+x)
+        DOA 90  = top    (+y)
+        DOA 180 = left   (-x)
+        DOA 270 = bottom (-y)
+
+    Mic physical positions:
+        MIC1 = 45 deg
+        MIC2 = 135 deg
+        MIC3 = 225 deg
+        MIC4 = 315 deg
+    """
+    mic_angles = [45, 135, 225, 315]
+
+    mic_positions = np.stack(
+        [
+            center_xyz
+            + np.array(
+                [
+                    radius * np.cos(np.deg2rad(a)),
+                    radius * np.sin(np.deg2rad(a)),
+                    0.0,
+                ],
+                dtype=np.float64,
+            )
+            for a in mic_angles
+        ],
+        axis=1,
+    )
+
+    return mic_positions.astype(np.float64)
 
 
 def sample_room(cfg: GenConfig) -> Tuple[np.ndarray, float]:
@@ -201,25 +237,47 @@ def compute_doa_deg(src_xyz: np.ndarray, mic_center_xyz: np.ndarray) -> int:
     ang = math.degrees(math.atan2(dy, dx)) % 360.0
     return int(round(ang)) % 360
 
+def get_audio_duration_sec(path: Path) -> float:
+    info = sf.info(str(path))
+    return info.frames / info.samplerate
 
-def unique_speaker_files(files: List[Path], n_needed: int) -> List[Path]:
+def unique_speaker_files_with_similar_length(
+    files: List[Path],
+    n_needed: int,
+    max_diff_sec: float,
+    min_duration_sec: float = 0.0,
+    max_attempts: int = 5000,
+) -> List[Path]:
     """
-    Sample files from distinct speaker IDs if possible.
-    For LibriSpeech, speaker ID is usually path.parts[-3] for:
-    .../<speaker>/<chapter>/<utterance>.flac
+    Sample files from distinct speakers whose durations differ by at most max_diff_sec.
+    A minimum duration can be required so fixed-length crops contain speech, not padding.
     """
     by_speaker = {}
+
     for p in files:
         parts = p.parts
         spk = parts[-3] if len(parts) >= 3 else str(p.parent)
         by_speaker.setdefault(spk, []).append(p)
 
     speakers = list(by_speaker.keys())
+
     if len(speakers) < n_needed:
         raise ValueError(f"Need {n_needed} distinct speakers, but found only {len(speakers)}")
 
-    chosen_spk = random.sample(speakers, n_needed)
-    return [random.choice(by_speaker[s]) for s in chosen_spk]
+    for _ in range(max_attempts):
+        chosen_spk = random.sample(speakers, n_needed)
+        chosen_files = [random.choice(by_speaker[s]) for s in chosen_spk]
+
+        durations = [get_audio_duration_sec(p) for p in chosen_files]
+
+        if min(durations) >= min_duration_sec and max(durations) - min(durations) <= max_diff_sec:
+            return chosen_files
+
+    raise RuntimeError(
+        f"Could not find {n_needed} distinct-speaker clips with length difference "
+        f"<= {max_diff_sec} seconds and duration >= {min_duration_sec} seconds "
+        f"after {max_attempts} attempts."
+    )
 
 
 def build_room(room_dim: np.ndarray, rt60: float, fs: int) -> pra.ShoeBox:
@@ -297,27 +355,120 @@ def save_wav(path: Path, sig: np.ndarray, sr: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(str(path), sig, sr)
 
-def get_text_reference(audio_path: Path) -> str:
+def angular_distance_deg(a: float, b: float) -> float:
     """
-    Extract transcript from LibriSpeech .trans.txt file.
+    Smallest circular distance between two angles in degrees.
     """
-    # Example: 19-198-0001.flac
-    file_id = audio_path.stem  # "19-198-0001"
+    diff = abs(a - b) % 360.0
+    return min(diff, 360.0 - diff)
 
-    # Find transcript file: 19-198.trans.txt
-    speaker_chapter = "-".join(file_id.split("-")[:2])  # "19-198"
-    txt_path = audio_path.parent / f"{speaker_chapter}.trans.txt"
 
-    if not txt_path.is_file():
-        raise FileNotFoundError(f"Transcript file not found: {txt_path}")
+def sample_doas_with_min_separation(
+    n_sources: int,
+    min_sep_deg: float = 30.0,
+) -> List[float]:
+    """
+    Sample DOAs directly on [0, 360) such that every pair is separated
+    by at least min_sep_deg.
 
-    with open(txt_path, "r") as f:
-        for line in f:
-            if line.startswith(file_id):
-                text = line[len(file_id):].strip()
-                return text
-    raise ValueError(f"Transcript for {file_id} not found in {txt_path}")
+    This avoids failing due to random 2D position rejection.
+    """
+    if n_sources * min_sep_deg > 360:
+        raise ValueError(
+            f"Impossible to place {n_sources} sources with {min_sep_deg}° minimum separation."
+        )
 
+    # Step 1: reserve the minimum separation for each source
+    # Total reserved angle = n_sources * min_sep_deg
+    # Remaining free angle is distributed randomly into n_sources gaps
+    free_angle = 360.0 - n_sources * min_sep_deg
+
+    # Randomly split free_angle into n_sources nonnegative parts
+    gap_fracs = np.random.dirichlet(np.ones(n_sources))
+    extra_gaps = free_angle * gap_fracs
+
+    # Build ordered angles on the circle
+    start = random.uniform(0.0, 360.0)
+    doas = [start]
+    current = start
+    for i in range(1, n_sources):
+        current += min_sep_deg + extra_gaps[i - 1]
+        doas.append(current % 360.0)
+
+    random.shuffle(doas)
+    return doas
+
+def max_radius_in_room_for_angle(
+    room_dim: np.ndarray,
+    mic_center: np.ndarray,
+    theta_deg: float,
+    wall_margin_m: float,
+) -> float:
+    """
+    Maximum radius from mic_center along angle theta_deg such that the point
+    stays inside the room with wall margin.
+    """
+    theta = math.radians(theta_deg)
+    dx = math.cos(theta)
+    dy = math.sin(theta)
+
+    x_min = wall_margin_m
+    x_max = room_dim[0] - wall_margin_m
+    y_min = wall_margin_m
+    y_max = room_dim[1] - wall_margin_m
+
+    radii = []
+
+    if abs(dx) > 1e-12:
+        if dx > 0:
+            radii.append((x_max - mic_center[0]) / dx)
+        else:
+            radii.append((x_min - mic_center[0]) / dx)
+
+    if abs(dy) > 1e-12:
+        if dy > 0:
+            radii.append((y_max - mic_center[1]) / dy)
+        else:
+            radii.append((y_min - mic_center[1]) / dy)
+
+    # keep only positive radii
+    radii = [r for r in radii if r > 0]
+
+    if not radii:
+        raise RuntimeError(f"Could not compute valid radius for angle {theta_deg}")
+
+    return min(radii)
+
+def source_position_from_doa(
+    room_dim: np.ndarray,
+    mic_center: np.ndarray,
+    theta_deg: float,
+    cfg: GenConfig,
+    fixed_radius_m: float = 2.0,
+) -> np.ndarray:
+    """
+    Place source at a fixed distance from the microphone center.
+    This keeps DOA controlled and reduces distance-induced volume variation.
+    """
+    r_max = max_radius_in_room_for_angle(
+        room_dim=room_dim,
+        mic_center=mic_center,
+        theta_deg=theta_deg,
+        wall_margin_m=cfg.wall_margin_m,
+    )
+
+    if fixed_radius_m > r_max:
+        r = 0.8 * r_max
+    else:
+        r = fixed_radius_m
+
+    theta = math.radians(theta_deg)
+
+    x = mic_center[0] + r * math.cos(theta)
+    y = mic_center[1] + r * math.sin(theta)
+    z = cfg.mic_height_m   # or random height if you still want height variation
+
+    return np.array([x, y, z], dtype=np.float64)
 
 # =========================
 # Main generation logic
@@ -337,25 +488,52 @@ class Stage1DatasetBuilder:
             raise FileNotFoundError(f"No noise files found under {cfg.demand_root}")
 
     def _sample_scene_audio(self) -> Tuple[List[np.ndarray], np.ndarray]:
-        # Sample 6 distinct speakers
-        speech_paths = unique_speaker_files(self.speech_files, self.cfg.n_speakers)
+        """
+        Sample 3 speakers with similar durations.
+
+        Speaker 0: dominant target speaker
+        Speaker 1-2: quieter background speakers
+
+        Speech clips are trimmed to the configured fixed duration.
+        """
+        cfg = self.cfg
+        clip_samples = int(round(cfg.clip_duration_sec * cfg.sample_rate))
+
+        speech_paths = unique_speaker_files_with_similar_length(
+            files=self.speech_files,
+            n_needed=cfg.n_speakers,
+            max_diff_sec=cfg.max_length_diff_sec,
+            min_duration_sec=cfg.clip_duration_sec,
+        )
+
         speech_clips: List[np.ndarray] = []
-        text_refs: List[str] = []
 
-        for p in speech_paths:
-            sig = read_audio_mono(p, self.cfg.sample_rate)
-            sig = scale_to_rms_db(sig, random.uniform(self.cfg.rms_db_min, self.cfg.rms_db_max))
+        for i, p in enumerate(speech_paths):
+            sig = read_audio_mono(p, cfg.sample_rate)
+            sig = fit_to_num_samples(sig, clip_samples)
+
+            if i == 0:
+                # Dominant speaker
+                sig = scale_to_rms_db(sig, cfg.dominant_rms_db)
+            else:
+                # Background speakers
+                bg_db = random.uniform(cfg.background_rms_db_min, cfg.background_rms_db_max)
+                sig = scale_to_rms_db(sig, bg_db)
+
             speech_clips.append(sig)
-            text_refs.append(get_text_reference(p))
-
-        max_speech_len = max(len(sig) for sig in speech_clips)
 
         noise_path = random.choice(self.noise_files)
-        noise = read_audio_mono(noise_path, self.cfg.sample_rate)
-        if len(noise) > max_speech_len:
-            noise = noise[:max_speech_len]
-        noise = scale_to_rms_db(noise, random.uniform(self.cfg.rms_db_min, self.cfg.rms_db_max))
-        return speech_clips, noise, text_refs
+        noise = read_audio_mono(noise_path, cfg.sample_rate)
+
+        # Noise can be cropped/repeated because it has no transcript.
+        if len(noise) < clip_samples:
+            repeat_times = int(np.ceil(clip_samples / len(noise)))
+            noise = np.tile(noise, repeat_times)
+
+        noise = fit_to_num_samples(noise, clip_samples)
+        noise = scale_to_rms_db(noise, random.uniform(-35.0, -30.0))
+
+        return speech_clips, noise
 
     def _generate_scene(self, scene_id: int) -> Tuple[np.ndarray, List[np.ndarray], List[int]]:
         """
@@ -367,12 +545,29 @@ class Stage1DatasetBuilder:
         cfg = self.cfg
         room_dim, rt60 = sample_room(cfg)
         mic_center = np.array([room_dim[0] / 2.0, room_dim[1] / 2.0, cfg.mic_height_m], dtype=np.float64)
-        mic_positions = circular_mic_positions_3d(mic_center, cfg.mic_radius_m, cfg.n_mics)
+        mic_positions = respeaker_4mic_positions_3d(mic_center, radius=cfg.mic_radius_m)
 
-        speech_clips, noise_clip, text_refs = self._sample_scene_audio()
+        speech_clips, noise_clip = self._sample_scene_audio()
 
         # Positions
-        spk_positions = [sample_source_position(room_dim, cfg) for _ in range(cfg.n_speakers)]
+        # Sample speaker DOAs first, then place speakers along those DOAs
+        speaker_doas = sample_doas_with_min_separation(
+            n_sources=cfg.n_speakers,
+            min_sep_deg=cfg.min_doa_sep_deg,
+        )
+
+        spk_positions = [
+            source_position_from_doa(
+                room_dim,
+                mic_center,
+                doa,
+                cfg,
+                fixed_radius_m=cfg.source_radius_m,
+            )
+            for doa in speaker_doas
+        ]
+
+        # Noise remains unconstrained
         noise_position = sample_source_position(room_dim, cfg)
 
         # DOAs for the 6 speakers
@@ -409,17 +604,19 @@ class Stage1DatasetBuilder:
         mixture_mc = peak_normalize(mixture_mc, peak=0.95)
         target_refs = [peak_normalize(t, peak=0.95) for t in target_refs]
 
-        return mixture_mc.astype(np.float32), target_refs, speaker_doas, text_refs
+        clip_samples = int(round(cfg.clip_duration_sec * cfg.sample_rate))
+        mixture_mc = fit_to_num_samples(mixture_mc, clip_samples, time_axis=1)
+        target_refs = [fit_to_num_samples(t, clip_samples) for t in target_refs]
+
+        return mixture_mc.astype(np.float32), target_refs, speaker_doas
 
     def build_split(self, split: SplitConfig) -> None:
         cfg = self.cfg
         split_root = cfg.output_root / split.name
         clean_root = split_root / "clean"
         mic_root = split_root / "mic"
-        text_root = split_root / "text"
         clean_root.mkdir(parents=True, exist_ok=True)
         mic_root.mkdir(parents=True, exist_ok=True)
-        text_root.mkdir(parents=True, exist_ok=True)
 
 
         items_written = 0
@@ -427,9 +624,9 @@ class Stage1DatasetBuilder:
 
         pbar = tqdm(total=split.num_items, desc=f"Generating {split.name}")
         while items_written < split.num_items:
-            mixture_mc, target_refs, speaker_doas, text_refs = self._generate_scene(scene_id)
+            mixture_mc, target_refs, speaker_doas = self._generate_scene(scene_id)
 
-            # From one scene, emit up to 6 trainer items, one target speaker at a time.
+            # Save only the dominant speaker voice only -----------------------------------------------------------
             for spk_idx in range(cfg.n_speakers):
                 if items_written >= split.num_items:
                     break
@@ -438,16 +635,9 @@ class Stage1DatasetBuilder:
 
                 clean_name = f"clean_fileid_{scene_id}_doa{doa}_spk{spk_idx + 1}.wav"
                 mic_name = f"mic_fileid_{scene_id}_doa{doa}_3spk.wav"
-                text_name = f"text_fileid_{scene_id}_doa{doa}_spk{spk_idx + 1}.txt"
 
                 clean_path = clean_root / clean_name
                 mic_path = mic_root / mic_name
-                text_path = text_root / text_name
-
-                # Save text file for the target speaker
-                text_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(text_path, "w") as f:
-                    f.write(text_refs[spk_idx] + "\n")
 
                 # Save mono clean target (trainer can repeat if needed)
                 save_wav(clean_path, target_refs[spk_idx], cfg.sample_rate)
@@ -470,13 +660,28 @@ class Stage1DatasetBuilder:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate stage-1 DSENet-style dataset.")
-    parser.add_argument("--librispeech_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\DSENet\data\LibriSpeech", help="Root folder of LibriSpeech")
-    parser.add_argument("--demand_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\DSENet\data\DEMAND", help="Root folder of DEMAND noise")
-    parser.add_argument("--output_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\Whisper_ASR\data\dataset_3mic_3spk", help="Output dataset root")
+    parser.add_argument(
+        "--librispeech_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/DSENet/data/LibriSpeech"
+    )
+
+    parser.add_argument(
+        "--demand_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/DSENet/data/DEMAND"
+    )
+
+    parser.add_argument(
+        "--output_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/audition_pipeline/data/dataset_4mic_3spk_4s"
+    )
 
     parser.add_argument("--eval_items", type=int, default=1200, help="Number of ASR evaluation items")
 
     parser.add_argument("--sample_rate", type=int, default=16000)
+    parser.add_argument("--clip_duration_sec", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=40)
     parser.add_argument("--ref_mic", type=int, default=0)
 
@@ -491,6 +696,7 @@ def main() -> None:
         demand_root=Path(args.demand_root),
         output_root=Path(args.output_root),
         sample_rate=args.sample_rate,
+        clip_duration_sec=args.clip_duration_sec,
         random_seed=args.seed,
         ref_mic=args.ref_mic,
     )

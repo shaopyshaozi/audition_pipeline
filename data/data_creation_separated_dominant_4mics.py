@@ -667,9 +667,23 @@ class Stage1DatasetBuilder:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate stage-1 DSENet-style dataset.")
-    parser.add_argument("--librispeech_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\DSENet\data\LibriSpeech", help="Root folder of LibriSpeech")
-    parser.add_argument("--demand_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\DSENet\data\DEMAND", help="Root folder of DEMAND noise")
-    parser.add_argument("--output_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\Whisper_ASR\data\dataset_4mic_3spk_dominant", help="Output dataset root")
+    parser.add_argument(
+        "--librispeech_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/DSENet/data/LibriSpeech"
+    )
+
+    parser.add_argument(
+        "--demand_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/DSENet/data/DEMAND"
+    )
+
+    parser.add_argument(
+        "--output_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/audition_pipeline/data/dataset_4mic_3spk_dominant"
+    )
 
     parser.add_argument("--eval_items", type=int, default=1200, help="Number of ASR evaluation items")
 

@@ -3,6 +3,7 @@
 ASR dataset creation with 3 overlapping speakers:
 one dominant target speaker and two quieter background speakers.
 With ground turth transcripts.
+4 MICS Respeaker version---------------------------------------------------------------------
 Valid for ASR evaluation only
 
 
@@ -73,8 +74,8 @@ class GenConfig:
     output_root: Path
     sample_rate: int = 16000
     n_speakers: int = 3
-    n_mics: int = 3
-    mic_radius_m: float = 0.03
+    n_mics: int = 4
+    mic_radius_m: float = 0.031
     room_w_min: float = 6.0
     room_w_max: float = 9.0
     room_d_min: float = 6.0
@@ -152,15 +153,44 @@ def peak_normalize(sig: np.ndarray, peak: float = 0.95) -> np.ndarray:
     return (sig * (peak / maxv)).astype(np.float32)
 
 
-def circular_mic_positions_3d(center_xyz: np.ndarray, radius: float, n_mics: int) -> np.ndarray:
+def respeaker_4mic_positions_3d(
+    center_xyz: np.ndarray,
+    radius: float = 0.031,
+) -> np.ndarray:
     """
-    Returns mic positions as shape [3, M], matching pyroomacoustics.
+    ReSpeaker 4-mic physical geometry.
+
+    Coordinate convention from Seeed image:
+        DOA 0   = right  (+x)
+        DOA 90  = top    (+y)
+        DOA 180 = left   (-x)
+        DOA 270 = bottom (-y)
+
+    Mic physical positions:
+        MIC1 = 45 deg
+        MIC2 = 135 deg
+        MIC3 = 225 deg
+        MIC4 = 315 deg
     """
-    phis = np.linspace(0, 2 * np.pi, n_mics, endpoint=False)
-    xs = center_xyz[0] + radius * np.cos(phis)
-    ys = center_xyz[1] + radius * np.sin(phis)
-    zs = np.full_like(xs, center_xyz[2])
-    return np.vstack([xs, ys, zs]).astype(np.float64)
+    mic_angles = [45, 135, 225, 315]
+
+    mic_positions = np.stack(
+        [
+            center_xyz
+            + np.array(
+                [
+                    radius * np.cos(np.deg2rad(a)),
+                    radius * np.sin(np.deg2rad(a)),
+                    0.0,
+                ],
+                dtype=np.float64,
+            )
+            for a in mic_angles
+        ],
+        axis=1,
+    )
+
+    return mic_positions.astype(np.float64)
 
 
 def sample_room(cfg: GenConfig) -> Tuple[np.ndarray, float]:
@@ -517,7 +547,7 @@ class Stage1DatasetBuilder:
         cfg = self.cfg
         room_dim, rt60 = sample_room(cfg)
         mic_center = np.array([room_dim[0] / 2.0, room_dim[1] / 2.0, cfg.mic_height_m], dtype=np.float64)
-        mic_positions = circular_mic_positions_3d(mic_center, cfg.mic_radius_m, cfg.n_mics)
+        mic_positions = respeaker_4mic_positions_3d(mic_center, radius=cfg.mic_radius_m)
 
         speech_clips, noise_clip, text_refs = self._sample_scene_audio()
 
@@ -597,7 +627,7 @@ class Stage1DatasetBuilder:
             mixture_mc, target_refs, speaker_doas, text_refs = self._generate_scene(scene_id)
 
             # Save only the dominant speaker voice only -----------------------------------------------------------
-            for spk_idx in [0]:
+            for spk_idx in range(cfg.n_speakers):
                 if items_written >= split.num_items:
                     break
 
@@ -637,9 +667,23 @@ class Stage1DatasetBuilder:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate stage-1 DSENet-style dataset.")
-    parser.add_argument("--librispeech_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\DSENet\data\LibriSpeech", help="Root folder of LibriSpeech")
-    parser.add_argument("--demand_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\DSENet\data\DEMAND", help="Root folder of DEMAND noise")
-    parser.add_argument("--output_root", type=str, default=r"D:\邵鹏远\UCL\博1\code\Whisper_ASR\data\dataset_3mic_3spk_dominant", help="Output dataset root")
+    parser.add_argument(
+        "--librispeech_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/DSENet/data/LibriSpeech"
+    )
+
+    parser.add_argument(
+        "--demand_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/DSENet/data/DEMAND"
+    )
+
+    parser.add_argument(
+        "--output_root",
+        type=str,
+        default="/mnt/d/邵鹏远/UCL/博1/code/audition_pipeline/data/dataset_4mic_3spk"
+    )
 
     parser.add_argument("--eval_items", type=int, default=1200, help="Number of ASR evaluation items")
 
