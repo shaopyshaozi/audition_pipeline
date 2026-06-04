@@ -93,6 +93,17 @@ def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+def clean_asr_hypothesis_text(text: str) -> str:
+    text = re.sub(r"\[[^\]]*\]", " ", text)
+    text = re.sub(r"\.{3,}|…+", " ", text)
+    text = re.sub(r"[<>]+", " ", text)
+    text = re.sub(r"[^\w\s.,!?;:'\"()\-]", " ", text, flags=re.UNICODE)
+    text = re.sub(r"\s+([.,!?;:])", r"\1", text)
+    text = re.sub(r"([(\"'])\s+", r"\1", text)
+    text = re.sub(r"\s+([)\"'])", r"\1", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def edit_distance_words(ref_words: Sequence[str], hyp_words: Sequence[str]) -> int:
     n = len(ref_words)
     m = len(hyp_words)
@@ -655,6 +666,10 @@ class SceneWer:
     wer: Optional[float]
     edit_distance: Optional[int]
     ref_words: Optional[int]
+    hypothesis_text_cleaned: str
+    wer_cleaned: Optional[float]
+    edit_distance_cleaned: Optional[int]
+    ref_words_cleaned: Optional[int]
 
 
 def parse_args() -> argparse.Namespace:
@@ -938,6 +953,8 @@ def main() -> None:
     missing_text = 0
     total_edits = 0
     total_ref_words = 0
+    total_edits_cleaned = 0
+    total_ref_words_cleaned = 0
     for fileid, rows in sorted(rows_by_fileid.items()):
         rows = sorted(rows, key=lambda r: r.chunk_index)
         previous_text = ""
@@ -950,17 +967,27 @@ def main() -> None:
             for row in rows
             if row.timestamp_assigned_text.strip()
         )
+        hypothesis_text_cleaned = clean_asr_hypothesis_text(hypothesis_text)
         text_path = dominant_spk1_texts.get(fileid)
         reference_text = text_path.read_text(encoding="utf-8").strip() if text_path is not None else ""
         sample_wer: Optional[float] = None
         edit_distance: Optional[int] = None
         ref_words: Optional[int] = None
+        sample_wer_cleaned: Optional[float] = None
+        edit_distance_cleaned: Optional[int] = None
+        ref_words_cleaned: Optional[int] = None
         if text_path is None:
             missing_text += 1
         else:
             sample_wer, edit_distance, ref_words = wer(reference_text, hypothesis_text)
+            sample_wer_cleaned, edit_distance_cleaned, ref_words_cleaned = wer(
+                reference_text,
+                hypothesis_text_cleaned,
+            )
             total_edits += edit_distance
             total_ref_words += ref_words
+            total_edits_cleaned += edit_distance_cleaned
+            total_ref_words_cleaned += ref_words_cleaned
 
         doa_errors = [row.selected_doa_error_deg for row in rows if row.selected_doa_error_deg is not None]
         scene_wer_results.append(
@@ -981,6 +1008,10 @@ def main() -> None:
                 wer=sample_wer,
                 edit_distance=edit_distance,
                 ref_words=ref_words,
+                hypothesis_text_cleaned=hypothesis_text_cleaned,
+                wer_cleaned=sample_wer_cleaned,
+                edit_distance_cleaned=edit_distance_cleaned,
+                ref_words_cleaned=ref_words_cleaned,
             )
         )
 
@@ -1013,6 +1044,17 @@ def main() -> None:
     evaluated_wer_rows = [row for row in scene_wer_results if row.wer is not None]
     corpus_wer = (total_edits / total_ref_words) if total_ref_words > 0 else 0.0
     mean_scene_wer = float(np.mean([row.wer for row in evaluated_wer_rows])) if evaluated_wer_rows else 0.0
+    evaluated_cleaned_wer_rows = [row for row in scene_wer_results if row.wer_cleaned is not None]
+    corpus_wer_cleaned = (
+        total_edits_cleaned / total_ref_words_cleaned
+        if total_ref_words_cleaned > 0
+        else 0.0
+    )
+    mean_scene_wer_cleaned = (
+        float(np.mean([row.wer_cleaned for row in evaluated_cleaned_wer_rows]))
+        if evaluated_cleaned_wer_rows
+        else 0.0
+    )
 
     summary = {
         "mic_dir": str(args.mic_dir),
@@ -1046,6 +1088,10 @@ def main() -> None:
         "mean_scene_wer": mean_scene_wer,
         "total_wer_edits": total_edits,
         "total_wer_ref_words": total_ref_words,
+        "corpus_wer_cleaned": corpus_wer_cleaned,
+        "mean_scene_wer_cleaned": mean_scene_wer_cleaned,
+        "total_wer_edits_cleaned": total_edits_cleaned,
+        "total_wer_ref_words_cleaned": total_ref_words_cleaned,
         "skipped_no_doa": skipped_no_doa,
         "missing_dominant_gt": missing_dominant_gt,
         "mean_selected_doa_error_deg": float(np.mean(selected_doa_errors)) if selected_doa_errors else 0.0,
@@ -1080,6 +1126,8 @@ def main() -> None:
     print(f"Evaluated scene WER items: {summary['evaluated_scene_wer_items']}")
     print(f"Corpus WER: {summary['corpus_wer']:.4f}")
     print(f"Mean scene WER: {summary['mean_scene_wer']:.4f}")
+    print(f"Corpus WER cleaned: {summary['corpus_wer_cleaned']:.4f}")
+    print(f"Mean scene WER cleaned: {summary['mean_scene_wer_cleaned']:.4f}")
     print(f"Final audio sent: {summary['final_audio_sec']:.3f}s")
     print(f"Final pipeline wall time: {summary['final_pipeline_wall_sec']:.3f}s")
     print(f"Final pipeline lag: {summary['final_pipeline_lag_sec']:.3f}s")
