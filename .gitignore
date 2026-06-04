@@ -16,3 +16,9 @@
 /.codex_pycache
 /data/__pycache__
 /data/dataset_4mic_3spk_4s_full
+/Models/Simulstreaming/simulstreaming/whisper/whisper_streaming/__pycache__
+/Models/Simulstreaming/simulstreaming/whisper/simul_whisper/whisper/__pycache__
+/Models/Simulstreaming/simulstreaming/whisper/simul_whisper/__pycache__
+/Models/Simulstreaming/simulstreaming/whisper/__pycache__
+/Models/Simulstreaming/simulstreaming/utils/__pycache__
+Models/Simulstreaming/small.pt
