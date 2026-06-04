@@ -764,7 +764,7 @@ def main() -> None:
                 server_proc.kill()
 
     all_transcripts = stream_client.all_transcripts()
-    transcript_jsonl = args.out_dir / f"pipeline_streaming_{args.whisper_model}_transcripts.jsonl"
+    transcript_jsonl = args.out_dir / f"pipeline_streaming_{args.whisper_model}_transcripts_4s.jsonl"
     with transcript_jsonl.open("w", encoding="utf-8") as f:
         for item in all_transcripts:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
@@ -774,7 +774,7 @@ def main() -> None:
     final_lag_sec = final_wall_sec - final_audio_sec
     final_cumulative_rtf = final_wall_sec / final_audio_sec if final_audio_sec > 0 else 0.0
 
-    details_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_details_1asr.csv"
+    details_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_details_1asr_4s.csv"
     with details_csv.open("w", newline="", encoding="utf-8") as f:
         fieldnames = list(SceneTiming.__dataclass_fields__.keys())
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -832,7 +832,7 @@ def main() -> None:
         "stream_transcript_segments": len(all_transcripts),
     }
 
-    summary_json = args.out_dir / f"pipeline_streaming_{args.whisper_model}_summary_1asr.json"
+    summary_json = args.out_dir / f"pipeline_streaming_{args.whisper_model}_summary_1asr_4s.json"
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print("\n===== STREAMING REALTIME SUMMARY =====")
