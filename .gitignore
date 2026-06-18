@@ -28,3 +28,6 @@ Models/Simulstreaming/small.pt
 /Models/SSL/IPDNET2/inference_results_70
 /Models/SSL/IPDNET2/utils/__pycache__
 /Models/SSL/IPDNET2/lightning_logs
+/Models/SSL/IPDNET/__pycache__
+/Models/SSL/IPDNET/DOA_eval/__pycache__
+/Models/SSL/IPDNET/utils/__pycache__
