@@ -15,7 +15,7 @@ ROOT = Path(
 MIC_DIR = ROOT / "mic"
 CLEAN_DIR = ROOT / "clean"
 
-OUTPUT_MIC_DIR = ROOT / "mic_4s_split_by_spk1"
+OUTPUT_MIC_DIR = ROOT / "mic_4s
 OUTPUT_MIC_DIR.mkdir(parents=True, exist_ok=True)
 
 CLIP_SECONDS = 4.0

@@ -5,11 +5,11 @@ import pandas as pd
 # =========================
 CSV_PATH = (
     "/mnt/d/邵鹏远/UCL/博1/code/"
-    "audition_pipeline/offline/results/"
-    "pipeline_whisper_small_wer_details_1asr.csv"
+    "audition_pipeline/online/results/"
+    "pipeline_streaming_small_scene_wer_1asr_4s_full.csv"
 )
 
-DOA_THRESHOLD_DEG = 360.0  # <- change this----------------------------------------------------------
+DOA_THRESHOLD_DEG = 20.0  # <- change this----------------------------------------------------------
 
 # =========================
 # Load CSV
@@ -17,19 +17,19 @@ DOA_THRESHOLD_DEG = 360.0  # <- change this-------------------------------------
 df = pd.read_csv(CSV_PATH)
 
 # Ensure numeric
-df["selected_doa_error_deg"] = pd.to_numeric(
-    df["selected_doa_error_deg"], errors="coerce"
+df["mean_selected_doa_error_deg"] = pd.to_numeric(
+    df["mean_selected_doa_error_deg"], errors="coerce"
 )
 df["wer"] = pd.to_numeric(df["wer"], errors="coerce")
 
 # Remove rows with missing values
-valid_df = df.dropna(subset=["selected_doa_error_deg", "wer"])
+valid_df = df.dropna(subset=["mean_selected_doa_error_deg", "wer"])
 
 # =========================
 # Filter by DOA error
 # =========================
 subset = valid_df[
-    valid_df["selected_doa_error_deg"] <= DOA_THRESHOLD_DEG
+    valid_df["mean_selected_doa_error_deg"] <= DOA_THRESHOLD_DEG
 ]
 
 # =========================
