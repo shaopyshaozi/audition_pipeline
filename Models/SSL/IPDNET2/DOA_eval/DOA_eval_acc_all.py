@@ -1,9 +1,15 @@
-import numpy as np
+﻿import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import argparse
+from pathlib import Path
 from sklearn.cluster import KMeans
 from itertools import permutations
 from tqdm import tqdm
+
+
+SSL_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_RESULTS_DIR = SSL_ROOT / "inference_results_70"
 
 def convert_pred_angle(pred):
     return np.asarray(pred) % 360
@@ -247,8 +253,8 @@ def evaluate_one_file_with_csv(
     # print("\nBest matching:")
     # for pi, gi, err in pairs:
     #     print(
-    #         f"Pred {pred_doas[pi]:.2f}°  <->  GT {gt_doas[gi]:.2f}°  "
-    #         f"error = {err:.2f}°"
+    #         f"Pred {pred_doas[pi]:.2f}掳  <->  GT {gt_doas[gi]:.2f}掳  "
+    #         f"error = {err:.2f}掳"
     #     )
 
     return {
@@ -259,35 +265,47 @@ def evaluate_one_file_with_csv(
 
 
 
-results=[]
-for scene_index in tqdm(range(400)):
-    result = evaluate_one_file_with_csv(
-        doaest_path = fr"/mnt/d/邵鹏远/UCL/博1/code/FN-SSL/IPDnet2/inference_results_70/{scene_index}_doaest.npy",
-        vadest_path = fr"/mnt/d/邵鹏远/UCL/博1/code/FN-SSL/IPDnet2/inference_results_70/{scene_index}_vadest.npy",
-        csv_path = r"/mnt/d/邵鹏远/UCL/博1/code/FN-SSL/IPDnet2/inference_results_70/ground_truth.csv",
-        scene_index=scene_index,
-        sample_idx=0,
-        num_sources=3,
-        vad_th=0.2,
-        threshold=5,
-        plot=False,
-        plot_cluster=False,
-    )
+def parse_args():
+    parser = argparse.ArgumentParser(description="Evaluate IPDNet2 DOA estimates.")
+    parser.add_argument("--results_dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    parser.add_argument("--csv_path", type=Path, default=None)
+    parser.add_argument("--num_scenes", type=int, default=400)
+    parser.add_argument("--threshold", type=float, default=5)
+    return parser.parse_args()
 
-    results+=result['errors']
-    print(result['pred_doas'])
 
-results = np.array(results)
+def main():
+    args = parse_args()
+    csv_path = args.csv_path or args.results_dir / "ground_truth.csv"
 
-threshold = 5
+    results = []
+    for scene_index in tqdm(range(args.num_scenes)):
+        result = evaluate_one_file_with_csv(
+            doaest_path=args.results_dir / f"{scene_index}_doaest.npy",
+            vadest_path=args.results_dir / f"{scene_index}_vadest.npy",
+            csv_path=csv_path,
+            scene_index=scene_index,
+            sample_idx=0,
+            num_sources=3,
+            vad_th=0.2,
+            threshold=args.threshold,
+            plot=False,
+            plot_cluster=False,
+        )
 
-mean_error_all = np.mean(results)
+        results += result["errors"]
+        print(result["pred_doas"])
 
-correct_errors = results[results <= threshold]
+    results = np.array(results)
+    mean_error_all = np.mean(results)
+    correct_errors = results[results <= args.threshold]
+    acc_5deg = len(correct_errors) / len(results)
+    mae_5deg = np.mean(correct_errors) if len(correct_errors) > 0 else np.nan
 
-acc_5deg = len(correct_errors) / len(results)
-mae_5deg = np.mean(correct_errors) if len(correct_errors) > 0 else np.nan
+    print(f"Mean angle error across all examples: {mean_error_all:.4f}")
+    print(f"Accuracy within {args.threshold} degrees: {acc_5deg:.4f}")
+    print(f"MAE of errors within {args.threshold} degrees: {mae_5deg:.4f}")
 
-print(f"Mean angle error across all examples: {mean_error_all:.4f}")
-print(f"Accuracy within {threshold} degrees: {acc_5deg:.4f}")
-print(f"MAE of errors within {threshold} degrees: {mae_5deg:.4f}")
+
+if __name__ == "__main__":
+    main()

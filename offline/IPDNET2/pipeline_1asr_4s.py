@@ -44,7 +44,7 @@ OFFLINE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = OFFLINE_ROOT.parent.parent
 SCRIPT_STEM = Path(__file__).stem
 MODELS_ROOT = PROJECT_ROOT / "Models"
-SSL_ROOT = MODELS_ROOT / "SSL"
+SSL_ROOT = MODELS_ROOT / "SSL" / "IPDNET2"
 DSE_ROOT = MODELS_ROOT / "DSE"
 DSENET_DATA_ROOT = PROJECT_ROOT / "data" / "dataset_4mic_3spk_4s_full"
 

@@ -1,4 +1,4 @@
-#from OptSRPDNN import opt
+﻿#from OptSRPDNN import opt
 from utils_ import forgetting_norm, audiowu_high_array_geometry
 from torch.utils.data import DataLoader
 import numpy as np
@@ -18,6 +18,7 @@ from torch import Tensor
 import torch
 from typing import Tuple
 import os
+from pathlib import Path
 from RecordData_multiple import RealData
 from copy import deepcopy
 from sampler import MyDistributedSampler
@@ -30,6 +31,10 @@ os.environ["OMP_NUM_THREADS"] = str(8)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 from Module_3spk import DPIPD2
+
+SSL_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = SSL_ROOT.parent.parent.parent
+INFERENCE_RESULTS_DIR = SSL_ROOT / "inference_results_70"
 
 #opts = opt()
 #dirs = opts.dir()
@@ -56,7 +61,7 @@ from Module_3spk import DPIPD2
 
 # dataset_test = RealData(
 #     data_dir='/mnt/e/RealMAN/test_gen_1/',
-#     #data_dir='/mnt/d/邵鹏远/UCL/博1/code/FN-SSL/IPDnet2/test_data/test_gen',
+#     #data_dir='/mnt/d/閭甸箯杩?UCL/鍗?/code/FN-SSL/IPDnet2/test_data/test_gen',
 #     target_dir=None,
 #     noise_dir=None,
 #     use_mic_id=[2,4,6,8],
@@ -65,7 +70,7 @@ from Module_3spk import DPIPD2
 # )
 
 dataset_predict = InferenceDataset(
-    data_dir='/mnt/d/邵鹏远/UCL/博1/code/Whisper_ASR/data/dataset_4mic_3spk/Eval/mic'
+    data_dir=str(PROJECT_ROOT / "data" / "dataset_4mic_3spk" / "Eval" / "mic")
 )
 
 class MyDataModule(LightningDataModule):
@@ -265,7 +270,7 @@ class MyModel(LightningModule):
         out = doa_decoder(
             pred_batch=pred_ipd,
             idx=batch_idx,
-            dir_name='./inference_results_70/'
+            dir_name=str(INFERENCE_RESULTS_DIR) + os.sep
         )
 
         return out
