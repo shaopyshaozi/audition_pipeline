@@ -1,15 +1,16 @@
 """
-Online-style streaming ASR baseline using clean spk1 audio directly.
+Online-style streaming ASR baseline using mixture audio directly.
 
-This script streams saved 4-second clean speaker-1 chunks to a SimulStreaming
-Whisper server. It is intended as a clean-speech upper-bound baseline for
-comparing mixture audio and enhanced IPDNet2 -> DSENet streaming ASR results.
+This script streams saved multichannel 4-second microphone chunks to a
+SimulStreaming Whisper server without running SSL or DSENet enhancement. It is
+intended as a mixture-audio baseline for comparing against the enhanced
+IPDNet2 -> DSENet -> streaming ASR pipeline.
 
 For each chunk:
 
-1. Load a clean spk1 4-second chunk.
-2. Convert it to mono if needed.
-3. Send the clean audio to SimulStreaming Whisper.
+1. Load the representative multichannel mixture chunk.
+2. Convert the mixture to mono for streaming ASR.
+3. Send the mono mixture to SimulStreaming Whisper.
 4. Assign returned transcript segments to chunk intervals.
 
 After all chunks are processed, chunk transcripts are concatenated by scene
@@ -40,7 +41,7 @@ from tqdm import tqdm
 
 
 ONLINE_ROOT = Path(__file__).resolve().parent
-PROJECT_ROOT = ONLINE_ROOT.parent
+PROJECT_ROOT = ONLINE_ROOT.parent.parent
 SCRIPT_STEM = Path(__file__).stem
 MODELS_ROOT = PROJECT_ROOT / "Models"
 SIMULSTREAMING_ROOT = MODELS_ROOT / "SimulStreaming"
@@ -116,27 +117,31 @@ def parse_chunk_index(path_or_name: Path | str) -> int:
     return int(match.group(1))
 
 
-def load_audio(path: Path, target_sr: int = 16000) -> Tuple[np.ndarray, int]:
-    wav, sr = sf.read(str(path), always_2d=False)
+def load_multichannel_audio(path: Path, target_sr: int = 16000) -> Tuple[np.ndarray, int]:
+    wav, sr = sf.read(str(path), always_2d=True)
     wav = wav.astype(np.float32)
     if sr != target_sr:
         gcd = math.gcd(sr, target_sr)
         up = target_sr // gcd
         down = sr // gcd
-        if wav.ndim == 1:
-            wav = resample_poly(wav, up, down).astype(np.float32)
-        else:
-            wav = np.stack(
-                [resample_poly(wav[:, ch], up, down).astype(np.float32) for ch in range(wav.shape[1])],
-                axis=1,
-            )
+        wav = np.stack(
+            [resample_poly(wav[:, ch], up, down).astype(np.float32) for ch in range(wav.shape[1])],
+            axis=1,
+        )
         sr = target_sr
     return wav, sr
 
 
-def audio_to_mono(wav_tc: np.ndarray) -> np.ndarray:
+def mixture_to_mono(wav_tc: np.ndarray, mode: str, channel_index: int) -> np.ndarray:
     if wav_tc.ndim == 1:
         return wav_tc.astype(np.float32)
+    if mode == "channel":
+        if channel_index < 0 or channel_index >= wav_tc.shape[1]:
+            raise ValueError(
+                f"channel_index={channel_index} is out of range for audio with "
+                f"{wav_tc.shape[1]} channels."
+            )
+        return wav_tc[:, channel_index].astype(np.float32)
     return wav_tc.mean(axis=1).astype(np.float32)
 
 
@@ -343,14 +348,9 @@ def start_streaming_whisper_server(args: argparse.Namespace) -> subprocess.Popen
     )
 
 
-def is_spk1(path: Path) -> bool:
-    name = path.stem.lower()
-    return "spk1" in name or "speaker1" in name
-
-
-def unique_clean_files(clean_4s_dir: Path, max_fileids: int, max_files: int) -> List[Path]:
+def unique_mic_files(mic_dir: Path, max_fileids: int, max_files: int) -> List[Path]:
     all_files = sorted(
-        (path for path in clean_4s_dir.glob("*.wav") if is_spk1(path)),
+        mic_dir.glob("*.wav"),
         key=lambda p: (parse_fileid(p), parse_chunk_index(p), parse_doa(p), p.name),
     )
     if max_fileids > 0:
@@ -362,14 +362,14 @@ def unique_clean_files(clean_4s_dir: Path, max_fileids: int, max_files: int) -> 
     return all_files
 
 
-def group_targets_by_scene_chunk(clean_files: Iterable[Path]) -> Dict[Tuple[int, int], List[Path]]:
+def group_targets_by_scene_chunk(mic_files: Iterable[Path]) -> Dict[Tuple[int, int], List[Path]]:
     grouped: Dict[Tuple[int, int], List[Path]] = {}
-    for path in clean_files:
+    for path in mic_files:
         grouped.setdefault((parse_fileid(path), parse_chunk_index(path)), []).append(path)
     return grouped
 
 
-def choose_clean_chunk(target_paths: Sequence[Path]) -> Path:
+def choose_representative_mic(target_paths: Sequence[Path]) -> Path:
     return sorted(target_paths, key=lambda p: (parse_doa(p), p.name))[0]
 
 
@@ -393,10 +393,10 @@ def load_dominant_spk1_texts(text_dir: Path) -> Dict[int, Path]:
 class ChunkTiming:
     fileid: int
     chunk_index: int
-    clean_file: str
+    mic_file: str
     duration_sec: float
     input_channels: int
-    input_audio_type: str
+    input_audio_mode: str
     audio_start_sec: float
     audio_end_sec: float
     gt_dominant_spk1_doa: Optional[int]
@@ -423,13 +423,13 @@ class SceneWer:
     fileid: int
     chunk_count: int
     chunk_indices: str
-    chunk_clean_files: str
+    chunk_mic_files: str
     audio_start_sec: float
     audio_end_sec: float
     audio_duration_sec: float
     gt_dominant_spk1_doa: Optional[int]
     gt_text_file: str
-    input_audio_type: str
+    input_audio_mode: str
     reference_text: str
     hypothesis_text: str
     wer: Optional[float]
@@ -442,14 +442,21 @@ class SceneWer:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Stream clean spk1 audio directly to Whisper and score scene WER.")
-    parser.add_argument("--clean_4s_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "clean_4s")
+    parser = argparse.ArgumentParser(description="Stream mixture audio directly to Whisper and score scene WER.")
+    parser.add_argument("--mic_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "mic_4s")
     parser.add_argument("--clean_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "clean")
     parser.add_argument("--text_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "text")
     parser.add_argument("--out_dir", type=Path, default=ONLINE_ROOT / "results" / SCRIPT_STEM)
     parser.add_argument("--whisper_model", type=str, default="small", help="Label used in output filenames.")
     parser.add_argument("--language", type=str, default="en")
     parser.add_argument("--sample_rate", type=int, default=16000)
+    parser.add_argument(
+        "--mixture_mode",
+        choices=["mean", "channel"],
+        default="mean",
+        help="How to convert multichannel mixture audio to mono before streaming.",
+    )
+    parser.add_argument("--channel_index", type=int, default=0, help="Channel used when --mixture_mode=channel.")
     parser.add_argument("--max_items", type=int, default=0, help="Limit total scene fileids for a quick test; 0 means all.")
     parser.add_argument("--max_files", type=int, default=0, help="Optional raw wav-file cap after fileid filtering; 0 means all.")
     parser.add_argument(
@@ -482,8 +489,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    if not args.clean_4s_dir.is_dir():
-        raise FileNotFoundError(f"Clean 4s folder not found: {args.clean_4s_dir}")
+    if not args.mic_dir.is_dir():
+        raise FileNotFoundError(f"Mic folder not found: {args.mic_dir}")
     if not args.clean_dir.is_dir():
         raise FileNotFoundError(f"Clean folder not found: {args.clean_dir}")
     if not args.text_dir.is_dir():
@@ -493,13 +500,17 @@ def main() -> None:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    input_audio_type = "clean_spk1"
+    input_audio_mode = (
+        f"channel_{args.channel_index}"
+        if args.mixture_mode == "channel"
+        else "mean_all_channels"
+    )
 
     print(f"Streaming Whisper: {args.streaming_mode} {args.streaming_host}:{args.streaming_port}")
     print(f"Streaming Whisper model path: {args.streaming_model_path}")
     print(f"Streaming realtime sender: {args.stream_realtime}")
-    print(f"Input audio type: {input_audio_type}")
-    print(f"Clean 4s input folder: {args.clean_4s_dir}")
+    print(f"Mixture input mode: {input_audio_mode}")
+    print(f"Mic input folder: {args.mic_dir}")
     print(f"Dominant speaker clean folder: {args.clean_dir}")
     print(f"Dominant speaker text folder: {args.text_dir}")
     print(f"Output folder: {args.out_dir}")
@@ -509,11 +520,11 @@ def main() -> None:
         print("Starting SimulStreaming Whisper server once...")
         server_proc = start_streaming_whisper_server(args)
 
-    target_files = unique_clean_files(args.clean_4s_dir, args.max_items, args.max_files)
+    target_files = unique_mic_files(args.mic_dir, args.max_items, args.max_files)
     grouped = group_targets_by_scene_chunk(target_files)
     dominant_spk1_doas = load_dominant_spk1_doas(args.clean_dir)
     dominant_spk1_texts = load_dominant_spk1_texts(args.text_dir)
-    print(f"Selected clean 4s wav entries: {len(target_files)}")
+    print(f"Selected mic wav entries: {len(target_files)}")
     print(f"Unique scene-chunk groups: {len(grouped)}")
     print(f"Dominant spk1 DOA references: {len(dominant_spk1_doas)}")
     print(f"Dominant spk1 text references: {len(dominant_spk1_texts)}")
@@ -546,13 +557,13 @@ def main() -> None:
     try:
         for (fileid, chunk_index), target_paths in tqdm(
             sorted(grouped.items()),
-            desc="Clean streaming",
+            desc="Mixture streaming",
             unit="chunk",
         ):
-            clean_path = choose_clean_chunk(target_paths)
-            wav_tc, sr = load_audio(clean_path, target_sr=args.sample_rate)
+            mic_path = choose_representative_mic(target_paths)
+            wav_tc, sr = load_multichannel_audio(mic_path, target_sr=args.sample_rate)
             duration_sec = wav_tc.shape[0] / float(sr)
-            clean_audio = audio_to_mono(wav_tc)
+            mixture_audio = mixture_to_mono(wav_tc, args.mixture_mode, args.channel_index)
 
             gt_dominant_doa = dominant_spk1_doas.get(fileid)
             if gt_dominant_doa is None:
@@ -560,7 +571,7 @@ def main() -> None:
 
             audio_start_sec = stream_client.total_audio_sec
             transcript_start_idx = stream_client.transcript_count()
-            stream_paced_send_sec, chunk_audio_sec = stream_client.send_audio(clean_audio, sr)
+            stream_paced_send_sec, chunk_audio_sec = stream_client.send_audio(mixture_audio, sr)
             transcript_delta = stream_client.transcripts_since(transcript_start_idx)
             received_during_send_text = transcript_text(transcript_delta)
 
@@ -573,10 +584,10 @@ def main() -> None:
                 ChunkTiming(
                     fileid=fileid,
                     chunk_index=chunk_index,
-                    clean_file=clean_path.name,
+                    mic_file=mic_path.name,
                     duration_sec=duration_sec,
                     input_channels=wav_tc.shape[1] if wav_tc.ndim > 1 else 1,
-                    input_audio_type=input_audio_type,
+                    input_audio_mode=input_audio_mode,
                     audio_start_sec=audio_start_sec,
                     audio_end_sec=audio_end_sec,
                     gt_dominant_spk1_doa=gt_dominant_doa,
@@ -608,7 +619,7 @@ def main() -> None:
                 server_proc.kill()
 
     all_transcripts = stream_client.all_transcripts()
-    transcript_jsonl = args.out_dir / f"pipeline_streaming_{args.whisper_model}_clean_transcripts_4s_full.jsonl"
+    transcript_jsonl = args.out_dir / f"pipeline_streaming_{args.whisper_model}_mixture_transcripts_4s_full.jsonl"
     with transcript_jsonl.open("w", encoding="utf-8") as f:
         for item in all_transcripts:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
@@ -681,13 +692,13 @@ def main() -> None:
                 fileid=fileid,
                 chunk_count=len(rows),
                 chunk_indices=",".join(str(row.chunk_index) for row in rows),
-                chunk_clean_files="|".join(row.clean_file for row in rows),
+                chunk_mic_files="|".join(row.mic_file for row in rows),
                 audio_start_sec=rows[0].audio_start_sec,
                 audio_end_sec=rows[-1].audio_end_sec,
                 audio_duration_sec=sum(row.duration_sec for row in rows),
                 gt_dominant_spk1_doa=dominant_spk1_doas.get(fileid),
                 gt_text_file=text_path.name if text_path is not None else "",
-                input_audio_type=input_audio_type,
+                input_audio_mode=input_audio_mode,
                 reference_text=reference_text,
                 hypothesis_text=hypothesis_text,
                 wer=sample_wer,
@@ -705,7 +716,7 @@ def main() -> None:
     final_lag_sec = final_wall_sec - final_audio_sec
     final_cumulative_rtf = final_wall_sec / final_audio_sec if final_audio_sec > 0 else 0.0
 
-    details_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_clean_details_4s_full.csv"
+    details_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_mixture_details_4s_full.csv"
     with details_csv.open("w", newline="", encoding="utf-8") as f:
         fieldnames = list(ChunkTiming.__dataclass_fields__.keys())
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -713,7 +724,7 @@ def main() -> None:
         for row in chunk_results:
             writer.writerow(asdict(row))
 
-    scene_wer_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_clean_scene_wer_4s_full.csv"
+    scene_wer_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_mixture_scene_wer_4s_full.csv"
     with scene_wer_csv.open("w", newline="", encoding="utf-8") as f:
         fieldnames = list(SceneWer.__dataclass_fields__.keys())
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -738,8 +749,8 @@ def main() -> None:
 
     summary = {
         "script": SCRIPT_STEM,
-        "pipeline_variant": "clean_spk1_direct_streaming_asr",
-        "clean_4s_dir": str(args.clean_4s_dir),
+        "pipeline_variant": "mixture_audio_direct_no_ssl_no_enhancement",
+        "mic_dir": str(args.mic_dir),
         "clean_dir": str(args.clean_dir),
         "text_dir": str(args.text_dir),
         "out_dir": str(args.out_dir),
@@ -753,10 +764,10 @@ def main() -> None:
         "stream_realtime": args.stream_realtime,
         "stream_packet_ms": args.stream_packet_ms,
         "realtime_tolerance_sec": args.realtime_tolerance_sec,
-        "input_audio_type": input_audio_type,
+        "input_audio_mode": input_audio_mode,
         "max_fileids": args.max_items,
         "max_files": args.max_files,
-        "selected_clean_4s_wav_entries": len(target_files),
+        "selected_mic_wav_entries": len(target_files),
         "unique_scene_chunk_groups": len(grouped),
         "unique_scene_fileids": len(rows_by_fileid),
         "dominant_spk1_doa_references": len(dominant_spk1_doas),
@@ -789,10 +800,10 @@ def main() -> None:
         "timestamp_assigned_transcript_segments": int(sum(r.timestamp_assigned_count for r in chunk_results)),
     }
 
-    summary_json = args.out_dir / f"pipeline_streaming_{args.whisper_model}_clean_summary_4s_full.json"
+    summary_json = args.out_dir / f"pipeline_streaming_{args.whisper_model}_mixture_summary_4s_full.json"
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
-    print("\n===== CLEAN STREAMING ASR SUMMARY =====")
+    print("\n===== MIXTURE STREAMING ASR SUMMARY =====")
     print(f"Evaluated chunks: {summary['evaluated_chunks']}")
     print(f"Evaluated scene WER items: {summary['evaluated_scene_wer_items']}")
     print(f"Corpus WER: {summary['corpus_wer']:.4f}")

@@ -1,4 +1,4 @@
-cd /mnt/d/邵鹏远/UCL/博1/code/audition_pipeline/offline
+cd /mnt/d/邵鹏远/UCL/博1/code/audition_pipeline/offline/IPDNET2
 source /mnt/d/邵鹏远/UCL/博1/code/audition_pipeline/venv_wsl/bin/activate
 python pipeline.py --max_items 3
 
