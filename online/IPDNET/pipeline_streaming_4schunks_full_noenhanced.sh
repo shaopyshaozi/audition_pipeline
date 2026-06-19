@@ -10,7 +10,7 @@ python simulstreaming_whisper_server.py \
   --log-level WARNING 2>&1 | python clean_transcript.py
 
 
-python online/IPDNET2/pipeline_streaming_4schunks_full_noenhanced.py \
+python online/IPDNET/pipeline_streaming_4schunks_full_noenhanced.py \
   --streaming_mode external \
   --streaming_host localhost \
   --streaming_port 43001 \

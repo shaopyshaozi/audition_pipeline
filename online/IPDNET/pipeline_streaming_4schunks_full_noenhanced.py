@@ -4,7 +4,7 @@ Online-style streaming ASR baseline using mixture audio directly.
 This script streams saved multichannel 4-second microphone chunks to a
 SimulStreaming Whisper server without running SSL or DSENet enhancement. It is
 intended as a mixture-audio baseline for comparing against the enhanced
-IPDNet2 -> DSENet -> streaming ASR pipeline.
+IPDNET -> DSENet -> streaming ASR pipeline.
 
 For each chunk:
 

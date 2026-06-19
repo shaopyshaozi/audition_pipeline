@@ -3,7 +3,7 @@ Online-style streaming ASR baseline using clean spk1 audio directly.
 
 This script streams saved 4-second clean speaker-1 chunks to a SimulStreaming
 Whisper server. It is intended as a clean-speech upper-bound baseline for
-comparing mixture audio and enhanced IPDNet2 -> DSENet streaming ASR results.
+comparing mixture audio and enhanced IPDNET -> DSENet streaming ASR results.
 
 For each chunk:
 

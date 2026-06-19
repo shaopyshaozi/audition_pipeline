@@ -1,7 +1,7 @@
 """
 Online-style SSL -> DSE -> streaming ASR realtime benchmark.
 
-Loads IPDNet2 and DSENet once, then streams each saved multichannel 4 s wav
+Loads IPDNET and DSENet once, then streams each saved multichannel 4 s wav
 one scene at a time into a SimulStreaming Whisper server. For each scene:
 
 1. Run SSL once on the representative multichannel mixture.
@@ -39,8 +39,9 @@ from tqdm import tqdm
 
 OFFLINE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = OFFLINE_ROOT.parent.parent
+SCRIPT_STEM = Path(__file__).stem
 MODELS_ROOT = PROJECT_ROOT / "Models"
-SSL_ROOT = MODELS_ROOT / "SSL" / "IPDNET2"
+SSL_ROOT = MODELS_ROOT / "SSL" / "IPDNET"
 DSE_ROOT = MODELS_ROOT / "DSE"
 SIMULSTREAMING_ROOT = MODELS_ROOT / "SimulStreaming"
 DSENET_DATA_ROOT = PROJECT_ROOT / "data" / "dataset_4mic_3spk_4s_full"
@@ -50,9 +51,9 @@ STREAM_BYTES_PER_SAMPLE = 2
 STREAM_BYTES_PER_SECOND = STREAM_SAMPLE_RATE * STREAM_BYTES_PER_SAMPLE
 
 sys.path.insert(0, str(SSL_ROOT))
-from IPDnet2_3spk import OnlineSpatialNet  # noqa: E402
-import Module_3spk as ssl_module  # noqa: E402
-from utils_ import audiowu_high_array_geometry, forgetting_norm  # noqa: E402
+import FixedAarryIPDnet as ssl_model  # noqa: E402
+import Module as ssl_module  # noqa: E402
+from utils_ import forgetting_norm  # noqa: E402
 
 sys.path.insert(0, str(DSE_ROOT))
 from DOATrainer import TrainModule  # noqa: E402
@@ -443,7 +444,7 @@ def postprocess_doa_from_tensors(
 
     azi = doa_np[0, :, 1, :] % 360.0
     score = vad_np[0, :, :]
-    active = score < vad_th
+    active = score > vad_th
 
     valid_angles = []
     valid_weights = []
@@ -451,7 +452,7 @@ def postprocess_doa_from_tensors(
         for k in range(azi.shape[1]):
             if active[t, k]:
                 valid_angles.append(azi[t, k])
-                valid_weights.append(1.0 / (score[t, k] + 1e-6))
+                valid_weights.append(max(float(score[t, k]), 1e-6))
 
     if len(valid_angles) < num_sources:
         return []
@@ -482,72 +483,106 @@ def torch_load_checkpoint(path: Path, device: str):
         return torch.load(str(path), map_location=device)
 
 
-class IPDNet2Inference(torch.nn.Module):
+RESPEAKER4_RADIUS_M = 0.031
+RESPEAKER4_MIC_POS = np.array(
+    (
+        (RESPEAKER4_RADIUS_M / np.sqrt(2), RESPEAKER4_RADIUS_M / np.sqrt(2), 0.0),
+        (-RESPEAKER4_RADIUS_M / np.sqrt(2), RESPEAKER4_RADIUS_M / np.sqrt(2), 0.0),
+        (-RESPEAKER4_RADIUS_M / np.sqrt(2), -RESPEAKER4_RADIUS_M / np.sqrt(2), 0.0),
+        (RESPEAKER4_RADIUS_M / np.sqrt(2), -RESPEAKER4_RADIUS_M / np.sqrt(2), 0.0),
+    ),
+    dtype=np.float32,
+)
+
+
+class IPDNetInference(torch.nn.Module):
     def __init__(self, device: str):
         super().__init__()
         self.device_name = device
-        self.arch = OnlineSpatialNet(
-            dim_input=8,
-            dim_output=18,
-            num_layers=8,
-            dim_hidden=96,
-            num_heads=4,
-            kernel_size=(5, 3),
-            conv_groups=(8, 8),
-            norms=["LN", "LN", "GN", "LN", "LN", "LN"],
-            dim_squeeze=8,
-            num_freqs=256,
-            attention="mamba(16,4)",
-            rope=False,
-            time_compression_layer=0,
-            fre_compression_ratio=16,
-            time_compression_ratio=5,
+        self.arch = ssl_model.IPDnet(
+            input_size=8,
+            hidden_size=128,
+            max_track=3,
+            is_online=True,
         )
-        self.dostft = ssl_module.STFT(win_len=512, win_shift_ratio=0.625, nfft=512)
+        self.dostft = ssl_module.STFT(win_len=512, win_shift_ratio=0.5, nfft=512)
         self.fre_range_used = range(1, 257)
+        self.doa_decoder = ssl_module.PredDOA(
+            mic_location=RESPEAKER4_MIC_POS,
+            max_track=3,
+            max_num_sources=1,
+            res_phi=360,
+            dev=device,
+            is_linear_array=False,
+            is_planar_array=True,
+        )
 
-    def forward(self, mic_sig_batch: torch.Tensor) -> torch.Tensor:
+    def forward(self, mic_sig_batch: torch.Tensor) -> Dict[str, torch.Tensor]:
         in_batch = self.data_preprocess_inference(mic_sig_batch)[0]
-        return self.arch(in_batch)
+        pred_ipd = self.arch(in_batch)
+        doa_est, vad_est = self.pred_ipd_to_doa(pred_ipd)
+        return {"doa_est": doa_est, "vad_est": vad_est, "pred_ipd": pred_ipd}
 
     def data_preprocess_inference(self, mic_sig_batch: torch.Tensor, eps: float = 1e-6) -> List[torch.Tensor]:
         stft = self.dostft(signal=mic_sig_batch)
         stft_rebatch = stft.permute(0, 3, 1, 2).to(self.device_name)
         mag = torch.abs(stft_rebatch)
-        mean_value = forgetting_norm(mag, sample_length=249)
+        mean_value = forgetting_norm(mag, sample_length=280)
         stft_rebatch_real = torch.real(stft_rebatch) / (mean_value + eps)
         stft_rebatch_imag = torch.imag(stft_rebatch) / (mean_value + eps)
         real_imag_batch = torch.cat((stft_rebatch_real, stft_rebatch_imag), dim=1)
         return [real_imag_batch[:, :, self.fre_range_used, :]]
 
+    def pred_ipd_to_doa(self, pred_ipd: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        nb, nt, ndoa, nmic, ntrack = pred_ipd.shape
+        pred_ipd_tracks = pred_ipd.permute(0, 3, 1, 2, 4).reshape(nb * nmic, nt, ndoa, ntrack)
 
-def load_ipdnet2(ckpt_path: Path, device: str) -> Tuple[IPDNet2Inference, torch.nn.Module]:
-    model = IPDNet2Inference(device=device)
+        doa_tracks = []
+        vad_tracks = []
+        for track_idx in range(ntrack):
+            pred_track, _ = self.doa_decoder.pred2DOA_track(
+                pred_batch=pred_ipd_tracks[:, :, :, track_idx],
+                gt_batch=None,
+            )
+            doa_tracks.append(pred_track[0])
+            vad_tracks.append(pred_track[1])
+
+        doa_est = torch.cat(doa_tracks, dim=-1) * 180.0 / np.pi
+        vad_est = torch.cat(vad_tracks, dim=-1)
+        return doa_est, vad_est
+
+
+def load_ipdnet(ckpt_path: Path, device: str) -> IPDNetInference:
+    model = IPDNetInference(device=device)
     ckpt = torch_load_checkpoint(ckpt_path, device)
-    state_dict = ckpt.get("state_dict", ckpt)
+    state_dict = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+    arch_state = {}
+    for key, value in state_dict.items():
+        if key.startswith("arch."):
+            arch_state[key.replace("arch.", "", 1)] = value
+        elif key.startswith("model.arch."):
+            arch_state[key.replace("model.arch.", "", 1)] = value
+        else:
+            arch_state[key] = value
+
+    model_keys = model.arch.state_dict()
     arch_state = {
-        key.replace("arch.", "", 1): value
-        for key, value in state_dict.items()
-        if key.startswith("arch.")
+        key: value
+        for key, value in arch_state.items()
+        if key in model_keys and hasattr(value, "shape") and tuple(model_keys[key].shape) == tuple(value.shape)
     }
+    if not arch_state:
+        raise RuntimeError(f"No IPDNET arch weights matched checkpoint: {ckpt_path}")
+
     missing, unexpected = model.arch.load_state_dict(arch_state, strict=False)
     if unexpected:
-        raise RuntimeError(f"Unexpected IPDNet2 checkpoint keys: {unexpected[:5]}")
+        print(f"Warning: IPDNET ignored {len(unexpected)} unexpected checkpoint keys.")
     if missing:
-        print(f"Warning: IPDNet2 missing {len(missing)} arch keys while loading checkpoint.")
+        print(f"Warning: IPDNET missing {len(missing)} arch keys while loading checkpoint.")
 
     model.eval().to(device)
-
-    use_mic_id = [2, 4, 6, 8]
-    mic_location = audiowu_high_array_geometry()[use_mic_id]
-    doa_decoder = ssl_module.PredDOA_Inference(
-        mic_location=mic_location,
-        max_track=3,
-        max_num_sources=1,
-        dev=device,
-    )
-    doa_decoder.eval().to(device)
-    return model, doa_decoder
+    model.doa_decoder.to(device)
+    return model
 
 
 def load_dsenet(ckpt_path: Path, device: str) -> TrainModule:
@@ -622,7 +657,7 @@ class SceneTiming:
     selected_enhanced_file: str
     gt_dominant_spk1_doa: Optional[int]
     selected_doa_error_deg: Optional[float]
-    ipdnet2_sec: float
+    ipdnet_sec: float
     dsenet_sec: float
     frontend_compute_sec: float
     frontend_compute_rtf: float
@@ -636,7 +671,7 @@ class SceneTiming:
     realtime_ok: int
     cumulative_rtf: float
     chunk_total_wall_sec: float
-    ipdnet2_rtf: float
+    ipdnet_rtf: float
     dsenet_rtf: float
     stream_paced_send_rtf: float
     received_during_send_count: int
@@ -673,19 +708,19 @@ class SceneWer:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run IPDNet2 -> DSENet -> streaming Whisper realtime benchmark.")
+    parser = argparse.ArgumentParser(description="Run IPDNET -> DSENet -> streaming Whisper realtime benchmark.")
     parser.add_argument("--mic_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "mic_4s")
     parser.add_argument("--clean_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "clean")
     parser.add_argument("--text_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "text")
-    parser.add_argument("--ipd_ckpt", type=Path, default=SSL_ROOT / "checkpoints" / "ipdnet2_23.ckpt")
+    parser.add_argument("--ipd_ckpt", type=Path, default=SSL_ROOT / "last-v1.ckpt")
     parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "DSE_96.ckpt")
-    parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results")
+    parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results" / SCRIPT_STEM)
     parser.add_argument("--whisper_model", type=str, default="small", help="Label used in output filenames.")
     parser.add_argument("--language", type=str, default="en")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--sample_rate", type=int, default=16000)
     parser.add_argument("--num_sources", type=int, default=3)
-    parser.add_argument("--vad_th", type=float, default=0.2)
+    parser.add_argument("--vad_th", type=float, default=0.7)
     parser.add_argument("--width", type=int, default=30)
     parser.add_argument("--max_items", type=int, default=0, help="Limit total scene fileids for a quick test; 0 means all.")
     parser.add_argument("--max_files", type=int, default=0, help="Optional raw wav-file cap after fileid filtering; 0 means all.")
@@ -742,8 +777,8 @@ def main() -> None:
     print(f"Mic input folder: {args.mic_dir}")
     print(f"Dominant speaker clean folder: {args.clean_dir}")
     print(f"Dominant speaker text folder: {args.text_dir}")
-    print("Loading IPDNet2 once...")
-    ipd_model, doa_decoder = load_ipdnet2(args.ipd_ckpt, args.device)
+    print("Loading IPDNET once...")
+    ipd_model = load_ipdnet(args.ipd_ckpt, args.device)
     print("Loading DSENet once...")
     dse_model = load_dsenet(args.dse_ckpt, args.device)
 
@@ -801,8 +836,7 @@ def main() -> None:
 
             def run_ssl():
                 with torch.inference_mode():
-                    pred_ipd = ipd_model(mic_batch)
-                    return doa_decoder(pred_ipd)
+                    return ipd_model(mic_batch)
 
             ssl_out, ipd_sec = elapsed_seconds(args.device, run_ssl)
             pred_doas = postprocess_doa_from_tensors(
@@ -815,7 +849,7 @@ def main() -> None:
             if len(pred_doas) != args.num_sources:
                 skipped_no_doa += 1
                 print(
-                    f"fileid={fileid}: expected {args.num_sources} SSL DOAs, "
+                    f"fileid={fileid} chunk={chunk_index}: expected {args.num_sources} SSL DOAs, "
                     f"got {len(pred_doas)}, skipped."
                 )
                 continue
@@ -835,7 +869,7 @@ def main() -> None:
 
             if not enhanced_batch:
                 skipped_no_doa += 1
-                print(f"fileid={fileid}: DSENet produced no enhanced output, skipped.")
+                print(f"fileid={fileid} chunk={chunk_index}: DSENet produced no enhanced output, skipped.")
                 continue
 
             selected_idx, selected_rms = select_loudest_enhanced(enhanced_batch)
@@ -885,7 +919,7 @@ def main() -> None:
                     selected_enhanced_file=selected_save_name,
                     gt_dominant_spk1_doa=gt_dominant_doa,
                     selected_doa_error_deg=selected_doa_error,
-                    ipdnet2_sec=ipd_sec,
+                    ipdnet_sec=ipd_sec,
                     dsenet_sec=dse_sec,
                     frontend_compute_sec=frontend_compute_sec,
                     frontend_compute_rtf=frontend_compute_sec / duration_sec,
@@ -899,7 +933,7 @@ def main() -> None:
                     realtime_ok=realtime_ok,
                     cumulative_rtf=pipeline_wall_sec / stream_audio_end_sec if stream_audio_end_sec > 0 else 0.0,
                     chunk_total_wall_sec=frontend_compute_sec + stream_paced_send_sec,
-                    ipdnet2_rtf=ipd_sec / duration_sec,
+                    ipdnet_rtf=ipd_sec / duration_sec,
                     dsenet_rtf=dse_sec / duration_sec,
                     stream_paced_send_rtf=stream_paced_send_sec / duration_sec,
                     received_during_send_count=len(transcript_delta),
@@ -1098,7 +1132,7 @@ def main() -> None:
         "median_selected_doa_error_deg": float(np.median(selected_doa_errors)) if selected_doa_errors else 0.0,
         "p95_selected_doa_error_deg": float(np.percentile(selected_doa_errors, 95)) if selected_doa_errors else 0.0,
         "mean_duration_sec": float(np.mean([r.duration_sec for r in scene_results])) if scene_results else 0.0,
-        "mean_ipdnet2_sec": float(np.mean([r.ipdnet2_sec for r in scene_results])) if scene_results else 0.0,
+        "mean_ipdnet_sec": float(np.mean([r.ipdnet_sec for r in scene_results])) if scene_results else 0.0,
         "mean_dsenet_sec": float(np.mean([r.dsenet_sec for r in scene_results])) if scene_results else 0.0,
         "mean_frontend_compute_sec": float(np.mean([r.frontend_compute_sec for r in scene_results])) if scene_results else 0.0,
         "mean_frontend_compute_rtf": float(np.mean([r.frontend_compute_rtf for r in scene_results])) if scene_results else 0.0,
@@ -1143,7 +1177,7 @@ def main() -> None:
     )
     print(
         "Mean timing per scene: "
-        f"IPDNet2={summary['mean_ipdnet2_sec']:.3f}s, "
+        f"IPDNET={summary['mean_ipdnet_sec']:.3f}s, "
         f"DSENet={summary['mean_dsenet_sec']:.3f}s, "
         f"frontend_compute={summary['mean_frontend_compute_sec']:.3f}s, "
         f"paced_send={summary['mean_stream_paced_send_sec']:.3f}s"
