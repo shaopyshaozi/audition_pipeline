@@ -8,7 +8,7 @@ import pandas as pd
 
 SCRIPT_ROOT = Path(__file__).resolve().parent
 DEFAULT_CSV_PATH = SCRIPT_ROOT / "results" / "pipeline_streaming_4schunks_full" /"pipeline_streaming_small_scene_wer_1asr_4s_full.csv"
-DOA_THRESHOLD_DEG = 20
+DOA_THRESHOLD_DEG = 40
 
 
 def parse_args() -> argparse.Namespace:
