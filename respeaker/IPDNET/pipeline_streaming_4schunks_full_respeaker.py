@@ -1,8 +1,8 @@
 """
 Online-style SSL -> DSE -> streaming ASR realtime benchmark.
 
-Loads IPDNET and DSENet once, then streams each saved multichannel 4 s wav
-one scene at a time into a SimulStreaming Whisper server. For each scene:
+Loads IPDNET and DSENet once, then records ReSpeaker audio in realtime and
+processes it as consecutive 4 s multichannel chunks. For each chunk:
 
 1. Run SSL once on the representative multichannel mixture.
 2. Convert SSL output to up to three DOAs.
@@ -27,7 +27,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 import soundfile as sf
@@ -166,6 +166,191 @@ def load_multichannel_audio(path: Path, target_sr: int = 16000) -> Tuple[np.ndar
         )
         sr = target_sr
     return wav, sr
+
+
+def parse_channel_indices(value: str) -> List[int]:
+    channels = [int(item.strip()) for item in value.split(",") if item.strip()]
+    if not channels:
+        raise argparse.ArgumentTypeError("At least one ReSpeaker mic channel must be selected.")
+    if len(set(channels)) != len(channels):
+        raise argparse.ArgumentTypeError(f"Duplicate ReSpeaker mic channel in: {value}")
+    return channels
+
+
+def list_audio_devices() -> None:
+    try:
+        import pyaudio
+    except ImportError as exc:
+        raise RuntimeError("PyAudio is required to list ReSpeaker devices. Install pyaudio first.") from exc
+
+    pa = pyaudio.PyAudio()
+    try:
+        print("Available PyAudio input devices:")
+        for idx in range(pa.get_device_count()):
+            info = pa.get_device_info_by_index(idx)
+            if int(info.get("maxInputChannels", 0)) <= 0:
+                continue
+            name = str(info.get("name", ""))
+            channels = int(info.get("maxInputChannels", 0))
+            rate = float(info.get("defaultSampleRate", 0.0))
+            print(f"  [{idx}] {name} | input_channels={channels} | default_rate={rate:g}")
+    finally:
+        pa.terminate()
+
+
+class ReSpeakerChunkSource:
+    def __init__(
+        self,
+        sample_rate: int,
+        input_channels: int,
+        sample_width: int,
+        input_device_index: Optional[int],
+        frames_per_buffer: int,
+        mic_channels: Sequence[int],
+        chunk_seconds: float,
+    ):
+        self.sample_rate = sample_rate
+        self.input_channels = input_channels
+        self.sample_width = sample_width
+        self.input_device_index = input_device_index
+        self.frames_per_buffer = frames_per_buffer
+        self.mic_channels = list(mic_channels)
+        self.chunk_samples = int(round(sample_rate * chunk_seconds))
+        self._pa = None
+        self._stream = None
+        self._pending = np.empty((0, len(self.mic_channels)), dtype=np.float32)
+
+        if self.sample_width != 2:
+            raise ValueError("Only 16-bit ReSpeaker input is currently supported.")
+        if self.chunk_samples <= 0:
+            raise ValueError("--chunk_seconds must be positive.")
+        invalid = [ch for ch in self.mic_channels if ch < 0 or ch >= self.input_channels]
+        if invalid:
+            raise ValueError(
+                f"Mic channel indices {invalid} are outside the input channel range 0..{self.input_channels - 1}."
+            )
+
+    def __enter__(self) -> "ReSpeakerChunkSource":
+        try:
+            import pyaudio
+        except ImportError as exc:
+            raise RuntimeError("PyAudio is required for live ReSpeaker capture. Install pyaudio first.") from exc
+
+        self._pa = pyaudio.PyAudio()
+        self._stream = self._pa.open(
+            rate=self.sample_rate,
+            format=self._pa.get_format_from_width(self.sample_width),
+            channels=self.input_channels,
+            input=True,
+            input_device_index=self.input_device_index,
+            frames_per_buffer=self.frames_per_buffer,
+        )
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self._stream is not None:
+            self._stream.stop_stream()
+            self._stream.close()
+            self._stream = None
+        if self._pa is not None:
+            self._pa.terminate()
+            self._pa = None
+
+    def iter_chunks(self, max_chunks: int = 0) -> Iterator[np.ndarray]:
+        if self._stream is None:
+            raise RuntimeError("ReSpeakerChunkSource must be opened before reading chunks.")
+
+        produced = 0
+        while max_chunks <= 0 or produced < max_chunks:
+            while self._pending.shape[0] < self.chunk_samples:
+                data = self._stream.read(self.frames_per_buffer, exception_on_overflow=False)
+                interleaved = np.frombuffer(data, dtype=np.int16)
+                frames = interleaved.reshape(-1, self.input_channels)
+                raw_mics = frames[:, self.mic_channels].astype(np.float32) / 32768.0
+                self._pending = np.concatenate((self._pending, raw_mics), axis=0)
+
+            chunk = self._pending[: self.chunk_samples]
+            self._pending = self._pending[self.chunk_samples :]
+            produced += 1
+            yield chunk.copy()
+
+
+class TcpInt16ChunkSource:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        sample_rate: int,
+        channels: int,
+        chunk_seconds: float,
+    ):
+        self.host = host
+        self.port = port
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.chunk_samples = int(round(sample_rate * chunk_seconds))
+        self.chunk_bytes = self.chunk_samples * channels * STREAM_BYTES_PER_SAMPLE
+        self._sock: Optional[socket.socket] = None
+        self._conn: Optional[socket.socket] = None
+        self._peer = None
+
+        if self.channels <= 0:
+            raise ValueError("--tcp_channels must be positive.")
+        if self.chunk_samples <= 0:
+            raise ValueError("--chunk_seconds must be positive.")
+
+    def __enter__(self) -> "TcpInt16ChunkSource":
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind((self.host, self.port))
+        self._sock.listen(1)
+        print(f"Waiting for Windows ReSpeaker sender on {self.host}:{self.port}...")
+        self._conn, self._peer = self._sock.accept()
+        self._conn.settimeout(2.0)
+        print(f"Connected audio sender: {self._peer}")
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except OSError:
+                pass
+            self._conn = None
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+            self._sock = None
+
+    def _recv_exact(self, nbytes: int) -> bytes:
+        if self._conn is None:
+            raise RuntimeError("TCP audio source must be connected before reading chunks.")
+        data = bytearray()
+        while len(data) < nbytes:
+            try:
+                packet = self._conn.recv(nbytes - len(data))
+            except socket.timeout:
+                continue
+            if not packet:
+                break
+            data.extend(packet)
+        return bytes(data)
+
+    def iter_chunks(self, max_chunks: int = 0) -> Iterator[np.ndarray]:
+        produced = 0
+        while max_chunks <= 0 or produced < max_chunks:
+            data = self._recv_exact(self.chunk_bytes)
+            if len(data) == 0:
+                print("TCP audio sender closed the connection.")
+                return
+            if len(data) < self.chunk_bytes:
+                print(f"Dropping incomplete TCP audio chunk: {len(data)} of {self.chunk_bytes} bytes.")
+                return
+            audio = np.frombuffer(data, dtype="<i2").reshape(-1, self.channels)
+            produced += 1
+            yield (audio.astype(np.float32) / 32768.0).copy()
 
 
 def mono_audio_to_pcm16(audio: np.ndarray, sr: int, target_sr: int = STREAM_SAMPLE_RATE) -> bytes:
@@ -641,6 +826,14 @@ def enhance_doa_batch(
     return [yr_hat[idx, 0].detach().cpu().numpy().astype(np.float32) for idx in range(batch_size)]
 
 
+def fallback_audio_for_skipped_chunk(wav_tc: np.ndarray, policy: str) -> np.ndarray:
+    if policy == "silence":
+        return np.zeros(wav_tc.shape[0], dtype=np.float32)
+    if policy == "mixture":
+        return wav_tc.mean(axis=1).astype(np.float32)
+    raise ValueError(f"Unsupported skip ASR policy: {policy}")
+
+
 @dataclass
 class SceneTiming:
     fileid: int
@@ -651,6 +844,7 @@ class SceneTiming:
     audio_end_sec: float
     predicted_doa_count: int
     predicted_doas: str
+    asr_audio_kind: str
     selected_enhanced_index: int
     selected_doa: int
     selected_rms: float
@@ -707,11 +901,26 @@ class SceneWer:
     ref_words_cleaned: Optional[int]
 
 
+@dataclass
+class ChunkTranscript:
+    chunk_index: int
+    mic_file: str
+    audio_start_sec: float
+    audio_end_sec: float
+    duration_sec: float
+    asr_audio_kind: str
+    predicted_doa_count: int
+    predicted_doas: str
+    selected_doa: int
+    pipeline_lag_sec: float
+    timestamp_assigned_text: str
+    hypothesis_text_cleaned: str
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run IPDNET -> DSENet -> streaming Whisper realtime benchmark.")
-    parser.add_argument("--mic_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "mic_4s")
-    parser.add_argument("--clean_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "clean")
-    parser.add_argument("--text_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "text")
+    parser = argparse.ArgumentParser(description="Record ReSpeaker audio and run IPDNET -> DSENet -> streaming Whisper.")
+    parser.add_argument("--clean_dir", type=Path, default=None, help="Optional clean-reference folder for offline-style DOA scoring.")
+    parser.add_argument("--text_dir", type=Path, default=None, help="Optional text-reference folder for offline-style WER scoring.")
     parser.add_argument("--ipd_ckpt", type=Path, default=SSL_ROOT / "last-v1.ckpt")
     parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "DSE_96.ckpt")
     parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results" / SCRIPT_STEM)
@@ -719,12 +928,46 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--language", type=str, default="en")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--sample_rate", type=int, default=16000)
+    parser.add_argument(
+        "--audio_source",
+        choices=["pyaudio", "tcp"],
+        default="pyaudio",
+        help="pyaudio records directly in this process; tcp receives raw 4ch int16 audio from Windows.",
+    )
+    parser.add_argument("--tcp_host", type=str, default="0.0.0.0")
+    parser.add_argument("--tcp_port", type=int, default=50007)
+    parser.add_argument("--tcp_channels", type=int, default=4)
+    parser.add_argument("--chunk_seconds", type=float, default=4.0)
     parser.add_argument("--num_sources", type=int, default=3)
     parser.add_argument("--vad_th", type=float, default=0.7)
     parser.add_argument("--width", type=int, default=30)
-    parser.add_argument("--max_items", type=int, default=0, help="Limit total scene fileids for a quick test; 0 means all.")
-    parser.add_argument("--max_files", type=int, default=0, help="Optional raw wav-file cap after fileid filtering; 0 means all.")
+    parser.add_argument(
+        "--skip_asr_policy",
+        choices=["silence", "mixture", "drop"],
+        default="silence",
+        help="What to send to ASR when SSL/DSENet cannot produce an enhanced chunk.",
+    )
+    parser.add_argument("--max_chunks", type=int, default=0, help="Limit live 4 s chunks for a quick test; 0 means run until Ctrl+C.")
+    parser.add_argument("--max_items", type=int, default=0, help="Deprecated alias for --max_chunks when --max_chunks is 0.")
     parser.add_argument("--save_enhanced", action="store_true", help="Save the selected loudest enhanced wav.")
+    parser.add_argument("--save_raw_chunks", action="store_true", help="Save captured 4-channel ReSpeaker chunks for debugging.")
+    parser.add_argument("--list_audio_devices", action="store_true", help="Print PyAudio input device indices and exit.")
+    parser.add_argument("--respeaker_rate", type=int, default=16000)
+    parser.add_argument("--respeaker_channels", type=int, default=6)
+    parser.add_argument("--respeaker_width", type=int, default=2)
+    parser.add_argument(
+        "--respeaker_index",
+        type=int,
+        default=1,
+        help="PyAudio input device index. Use -1 to let PyAudio choose the default input device.",
+    )
+    parser.add_argument("--respeaker_frames_per_buffer", type=int, default=1024)
+    parser.add_argument(
+        "--respeaker_mic_channels",
+        type=parse_channel_indices,
+        default=parse_channel_indices("1,2,3,4"),
+        help="Comma-separated zero-based ReSpeaker channels to feed IPDNET/DSENet.",
+    )
     parser.add_argument(
         "--streaming_mode",
         choices=["managed", "external"],
@@ -755,12 +998,16 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    if not args.mic_dir.is_dir():
-        raise FileNotFoundError(f"Mic folder not found: {args.mic_dir}")
-    if not args.clean_dir.is_dir():
-        raise FileNotFoundError(f"Clean folder not found: {args.clean_dir}")
-    if not args.text_dir.is_dir():
-        raise FileNotFoundError(f"Text folder not found: {args.text_dir}")
+    if args.list_audio_devices:
+        list_audio_devices()
+        return
+
+    if args.audio_source == "pyaudio" and args.sample_rate != args.respeaker_rate:
+        raise ValueError(
+            f"--sample_rate ({args.sample_rate}) must match --respeaker_rate ({args.respeaker_rate}) for live capture."
+        )
+    if args.audio_source == "tcp" and args.tcp_channels != 4:
+        raise ValueError("This IPDNET/DSENet pipeline expects 4-channel TCP input. Keep --tcp_channels 4.")
     if args.streaming_mode == "managed" and not args.streaming_model_path.is_file():
         raise FileNotFoundError(f"Streaming Whisper model not found: {args.streaming_model_path}")
 
@@ -768,15 +1015,34 @@ def main() -> None:
     enhanced_dir = args.out_dir / "pipeline_realtime_enhanced"
     if args.save_enhanced:
         enhanced_dir.mkdir(parents=True, exist_ok=True)
+    raw_chunk_dir = args.out_dir / "pipeline_realtime_raw_chunks"
+    if args.save_raw_chunks:
+        raw_chunk_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Device: {args.device}")
+    print(f"Audio source: {args.audio_source}")
+    if args.audio_source == "pyaudio":
+        print(
+            "ReSpeaker input: "
+            f"index={args.respeaker_index if args.respeaker_index >= 0 else 'default'}, "
+            f"rate={args.respeaker_rate}, channels={args.respeaker_channels}, "
+            f"mic_channels={','.join(str(ch) for ch in args.respeaker_mic_channels)}, "
+            f"chunk_seconds={args.chunk_seconds}"
+        )
+    else:
+        print(
+            "TCP audio input: "
+            f"{args.tcp_host}:{args.tcp_port}, rate={args.sample_rate}, "
+            f"channels={args.tcp_channels}, chunk_seconds={args.chunk_seconds}"
+        )
     print(f"Streaming Whisper: {args.streaming_mode} {args.streaming_host}:{args.streaming_port}")
     print(f"Streaming Whisper model path: {args.streaming_model_path}")
     print(f"Streaming realtime sender: {args.stream_realtime}")
     print(f"DSENet batch size: {args.num_sources}")
-    print(f"Mic input folder: {args.mic_dir}")
-    print(f"Dominant speaker clean folder: {args.clean_dir}")
-    print(f"Dominant speaker text folder: {args.text_dir}")
+    if args.clean_dir is not None and args.clean_dir.is_dir():
+        print(f"Optional dominant speaker clean folder: {args.clean_dir}")
+    if args.text_dir is not None and args.text_dir.is_dir():
+        print(f"Optional dominant speaker text folder: {args.text_dir}")
     print("Loading IPDNET once...")
     ipd_model = load_ipdnet(args.ipd_ckpt, args.device)
     print("Loading DSENet once...")
@@ -787,18 +1053,100 @@ def main() -> None:
         print("Starting SimulStreaming Whisper server once...")
         server_proc = start_streaming_whisper_server(args)
 
-    target_files = unique_mic_files(args.mic_dir, args.max_items, args.max_files)
-    grouped = group_targets_by_scene_chunk(target_files)
-    dominant_spk1_doas = load_dominant_spk1_doas(args.clean_dir)
-    dominant_spk1_texts = load_dominant_spk1_texts(args.text_dir)
-    print(f"Selected mic wav entries: {len(target_files)}")
-    print(f"Unique scene-chunk groups: {len(grouped)}")
+    chunk_limit = args.max_chunks if args.max_chunks > 0 else args.max_items
+    dominant_spk1_doas = (
+        load_dominant_spk1_doas(args.clean_dir)
+        if args.clean_dir is not None and args.clean_dir.is_dir()
+        else {}
+    )
+    dominant_spk1_texts = (
+        load_dominant_spk1_texts(args.text_dir)
+        if args.text_dir is not None and args.text_dir.is_dir()
+        else {}
+    )
+    print(f"Live chunk limit: {chunk_limit if chunk_limit > 0 else 'until Ctrl+C'}")
     print(f"Dominant spk1 DOA references: {len(dominant_spk1_doas)}")
     print(f"Dominant spk1 text references: {len(dominant_spk1_texts)}")
 
     scene_results: List[SceneTiming] = []
     skipped_no_doa = 0
     missing_dominant_gt = 0
+    timing_started = False
+
+    def send_asr_fallback_row(
+        *,
+        fileid: int,
+        chunk_index: int,
+        mic_name: str,
+        wav_tc: np.ndarray,
+        sr: int,
+        duration_sec: float,
+        pred_doas: Sequence[int],
+        ipd_sec: float,
+        dse_sec: float,
+        reason: str,
+    ) -> None:
+        if args.skip_asr_policy == "drop":
+            return
+
+        fallback_audio = fallback_audio_for_skipped_chunk(wav_tc, args.skip_asr_policy)
+        audio_start_sec = stream_client.total_audio_sec
+        transcript_start_idx = stream_client.transcript_count()
+        stream_paced_send_sec, chunk_audio_sec = stream_client.send_audio(fallback_audio, sr)
+        transcript_delta = stream_client.transcripts_since(transcript_start_idx)
+        received_during_send_text = transcript_text(transcript_delta)
+
+        frontend_compute_sec = ipd_sec + dse_sec
+        audio_end_sec = audio_start_sec + chunk_audio_sec
+        pipeline_wall_sec = time.perf_counter() - stream_start
+        stream_audio_end_sec = stream_client.total_audio_sec
+        pipeline_lag_sec = pipeline_wall_sec - stream_audio_end_sec
+        realtime_ok = int(pipeline_lag_sec <= args.realtime_tolerance_sec)
+        selected_save_name = f"{reason}_{args.skip_asr_policy}_chunk{chunk_index}.wav"
+        scene_results.append(
+            SceneTiming(
+                fileid=fileid,
+                chunk_index=chunk_index,
+                mic_file=mic_name,
+                duration_sec=duration_sec,
+                audio_start_sec=audio_start_sec,
+                audio_end_sec=audio_end_sec,
+                predicted_doa_count=len(pred_doas),
+                predicted_doas=",".join(str(doa) for doa in pred_doas),
+                asr_audio_kind=f"fallback_{args.skip_asr_policy}_{reason}",
+                selected_enhanced_index=-1,
+                selected_doa=-1,
+                selected_rms=signal_rms(fallback_audio),
+                selected_enhanced_file=selected_save_name,
+                gt_dominant_spk1_doa=None,
+                selected_doa_error_deg=None,
+                ipdnet_sec=ipd_sec,
+                dsenet_sec=dse_sec,
+                frontend_compute_sec=frontend_compute_sec,
+                frontend_compute_rtf=frontend_compute_sec / duration_sec,
+                frontend_compute_margin_sec=duration_sec - frontend_compute_sec,
+                stream_paced_send_sec=stream_paced_send_sec,
+                chunk_audio_sec=chunk_audio_sec,
+                stream_audio_end_sec=stream_audio_end_sec,
+                pipeline_wall_sec=pipeline_wall_sec,
+                pipeline_lag_sec=pipeline_lag_sec,
+                realtime_tolerance_sec=args.realtime_tolerance_sec,
+                realtime_ok=realtime_ok,
+                cumulative_rtf=pipeline_wall_sec / stream_audio_end_sec if stream_audio_end_sec > 0 else 0.0,
+                chunk_total_wall_sec=frontend_compute_sec + stream_paced_send_sec,
+                ipdnet_rtf=ipd_sec / duration_sec,
+                dsenet_rtf=dse_sec / duration_sec,
+                stream_paced_send_rtf=stream_paced_send_sec / duration_sec,
+                received_during_send_count=len(transcript_delta),
+                received_during_send_text=received_during_send_text,
+                timestamp_assigned_count=0,
+                timestamp_assigned_text="",
+                previous_chunk_transcript_text="",
+                timestamp_assigned_start_sec=None,
+                timestamp_assigned_end_sec=None,
+            )
+        )
+
     stream_start = time.perf_counter()
     stream_client = StreamingWhisperClient(
         host=args.streaming_host,
@@ -819,132 +1167,195 @@ def main() -> None:
             except subprocess.TimeoutExpired:
                 server_proc.kill()
         raise
-    stream_start = time.perf_counter()
-    stream_client.start_time = stream_start
 
     try:
-        for (fileid, chunk_index), target_paths in tqdm(
-            sorted(grouped.items()),
-            desc="Realtime",
-            unit="chunk",
-        ):
-            mic_path = choose_representative_mic(target_paths)
-            wav_tc, sr = load_multichannel_audio(mic_path, target_sr=args.sample_rate)
-            duration_sec = wav_tc.shape[0] / float(sr)
-            mic_batch = torch.from_numpy(wav_tc).unsqueeze(0)
-            noisy_ct = torch.from_numpy(wav_tc.T.copy())
-
-            def run_ssl():
-                with torch.inference_mode():
-                    return ipd_model(mic_batch)
-
-            ssl_out, ipd_sec = elapsed_seconds(args.device, run_ssl)
-            pred_doas = postprocess_doa_from_tensors(
-                ssl_out["doa_est"],
-                ssl_out["vad_est"],
-                num_sources=args.num_sources,
-                vad_th=args.vad_th,
+        input_device_index = None if args.respeaker_index < 0 else args.respeaker_index
+        if args.audio_source == "pyaudio":
+            source_context = ReSpeakerChunkSource(
+                sample_rate=args.respeaker_rate,
+                input_channels=args.respeaker_channels,
+                sample_width=args.respeaker_width,
+                input_device_index=input_device_index,
+                frames_per_buffer=args.respeaker_frames_per_buffer,
+                mic_channels=args.respeaker_mic_channels,
+                chunk_seconds=args.chunk_seconds,
             )
+            source_message = "Recording from ReSpeaker. Press Ctrl+C to stop."
+        else:
+            source_context = TcpInt16ChunkSource(
+                host=args.tcp_host,
+                port=args.tcp_port,
+                sample_rate=args.sample_rate,
+                channels=args.tcp_channels,
+                chunk_seconds=args.chunk_seconds,
+            )
+            source_message = "Receiving ReSpeaker audio over TCP. Press Ctrl+C to stop."
 
-            if len(pred_doas) != args.num_sources:
-                skipped_no_doa += 1
-                print(
-                    f"fileid={fileid} chunk={chunk_index}: expected {args.num_sources} SSL DOAs, "
-                    f"got {len(pred_doas)}, skipped."
+        with source_context as chunk_source:
+            print(source_message)
+            live_chunks = enumerate(chunk_source.iter_chunks(max_chunks=chunk_limit), start=1)
+            for chunk_index, wav_tc in tqdm(
+                live_chunks,
+                total=chunk_limit if chunk_limit > 0 else None,
+                desc="Live ReSpeaker",
+                unit="chunk",
+            ):
+                if not timing_started:
+                    stream_start = time.perf_counter()
+                    stream_client.start_time = stream_start
+                    timing_started = True
+                    print("Realtime clock started at first received audio chunk.")
+
+                fileid = 1
+                sr = args.sample_rate
+                mic_name = f"respeaker_live_chunk_{chunk_index:06d}.wav"
+                if args.save_raw_chunks:
+                    sf.write(str(raw_chunk_dir / mic_name), wav_tc, sr)
+                duration_sec = wav_tc.shape[0] / float(sr)
+                mic_batch = torch.from_numpy(wav_tc).unsqueeze(0)
+                noisy_ct = torch.from_numpy(wav_tc.T.copy())
+
+                def run_ssl():
+                    with torch.inference_mode():
+                        return ipd_model(mic_batch)
+
+                ssl_out, ipd_sec = elapsed_seconds(args.device, run_ssl)
+                pred_doas = postprocess_doa_from_tensors(
+                    ssl_out["doa_est"],
+                    ssl_out["vad_est"],
+                    num_sources=args.num_sources,
+                    vad_th=args.vad_th,
                 )
-                continue
 
-            enhanced_batch, dse_sec = elapsed_seconds(
-                args.device,
-                lambda: enhance_doa_batch(
-                    dse_model,
-                    noisy_ct,
-                    pred_doas,
-                    args.width,
+                if len(pred_doas) != args.num_sources:
+                    skipped_no_doa += 1
+                    print(
+                        f"live chunk={chunk_index}: expected {args.num_sources} SSL DOAs, "
+                        f"got {len(pred_doas)}, using {args.skip_asr_policy} fallback."
+                    )
+                    send_asr_fallback_row(
+                        fileid=fileid,
+                        chunk_index=chunk_index,
+                        mic_name=mic_name,
+                        wav_tc=wav_tc,
+                        sr=sr,
+                        duration_sec=duration_sec,
+                        pred_doas=pred_doas,
+                        ipd_sec=ipd_sec,
+                        dse_sec=0.0,
+                        reason="skip_no_doa",
+                    )
+                    continue
+
+                enhanced_batch, dse_sec = elapsed_seconds(
                     args.device,
-                ),
-            )
-            if args.device.startswith("cuda") and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            if not enhanced_batch:
-                skipped_no_doa += 1
-                print(f"fileid={fileid} chunk={chunk_index}: DSENet produced no enhanced output, skipped.")
-                continue
-
-            selected_idx, selected_rms = select_loudest_enhanced(enhanced_batch)
-            selected_doa = pred_doas[selected_idx]
-            selected_save_name = (
-                f"enhanced_fileid_{fileid}_chunk{chunk_index}_"
-                f"pred{selected_doa}_idx{selected_idx}_loudest.wav"
-            )
-            enhanced_for_asr = enhanced_batch[selected_idx]
-            gt_dominant_doa = dominant_spk1_doas.get(fileid)
-            selected_doa_error = (
-                circular_angle_error_deg(selected_doa, gt_dominant_doa)
-                if gt_dominant_doa is not None
-                else None
-            )
-            if gt_dominant_doa is None:
-                missing_dominant_gt += 1
-
-            if args.save_enhanced:
-                sf.write(str(enhanced_dir / selected_save_name), enhanced_for_asr, sr)
-
-            audio_start_sec = stream_client.total_audio_sec
-            transcript_start_idx = stream_client.transcript_count()
-            stream_paced_send_sec, chunk_audio_sec = stream_client.send_audio(enhanced_for_asr, sr)
-            transcript_delta = stream_client.transcripts_since(transcript_start_idx)
-            received_during_send_text = transcript_text(transcript_delta)
-
-            frontend_compute_sec = ipd_sec + dse_sec
-            audio_end_sec = audio_start_sec + chunk_audio_sec
-            pipeline_wall_sec = time.perf_counter() - stream_start
-            stream_audio_end_sec = stream_client.total_audio_sec
-            pipeline_lag_sec = pipeline_wall_sec - stream_audio_end_sec
-            realtime_ok = int(pipeline_lag_sec <= args.realtime_tolerance_sec)
-            scene_results.append(
-                SceneTiming(
-                    fileid=fileid,
-                    chunk_index=chunk_index,
-                    mic_file=mic_path.name,
-                    duration_sec=duration_sec,
-                    audio_start_sec=audio_start_sec,
-                    audio_end_sec=audio_end_sec,
-                    predicted_doa_count=len(pred_doas),
-                    predicted_doas=",".join(str(doa) for doa in pred_doas),
-                    selected_enhanced_index=selected_idx,
-                    selected_doa=selected_doa,
-                    selected_rms=selected_rms,
-                    selected_enhanced_file=selected_save_name,
-                    gt_dominant_spk1_doa=gt_dominant_doa,
-                    selected_doa_error_deg=selected_doa_error,
-                    ipdnet_sec=ipd_sec,
-                    dsenet_sec=dse_sec,
-                    frontend_compute_sec=frontend_compute_sec,
-                    frontend_compute_rtf=frontend_compute_sec / duration_sec,
-                    frontend_compute_margin_sec=duration_sec - frontend_compute_sec,
-                    stream_paced_send_sec=stream_paced_send_sec,
-                    chunk_audio_sec=chunk_audio_sec,
-                    stream_audio_end_sec=stream_audio_end_sec,
-                    pipeline_wall_sec=pipeline_wall_sec,
-                    pipeline_lag_sec=pipeline_lag_sec,
-                    realtime_tolerance_sec=args.realtime_tolerance_sec,
-                    realtime_ok=realtime_ok,
-                    cumulative_rtf=pipeline_wall_sec / stream_audio_end_sec if stream_audio_end_sec > 0 else 0.0,
-                    chunk_total_wall_sec=frontend_compute_sec + stream_paced_send_sec,
-                    ipdnet_rtf=ipd_sec / duration_sec,
-                    dsenet_rtf=dse_sec / duration_sec,
-                    stream_paced_send_rtf=stream_paced_send_sec / duration_sec,
-                    received_during_send_count=len(transcript_delta),
-                    received_during_send_text=received_during_send_text,
-                    timestamp_assigned_count=0,
-                    timestamp_assigned_text="",
-                    previous_chunk_transcript_text="",
-                    timestamp_assigned_start_sec=None,
-                    timestamp_assigned_end_sec=None,
+                    lambda: enhance_doa_batch(
+                        dse_model,
+                        noisy_ct,
+                        pred_doas,
+                        args.width,
+                        args.device,
+                    ),
                 )
-            )
+                if args.device.startswith("cuda") and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+                if not enhanced_batch:
+                    skipped_no_doa += 1
+                    print(
+                        f"live chunk={chunk_index}: DSENet produced no enhanced output, "
+                        f"using {args.skip_asr_policy} fallback."
+                    )
+                    send_asr_fallback_row(
+                        fileid=fileid,
+                        chunk_index=chunk_index,
+                        mic_name=mic_name,
+                        wav_tc=wav_tc,
+                        sr=sr,
+                        duration_sec=duration_sec,
+                        pred_doas=pred_doas,
+                        ipd_sec=ipd_sec,
+                        dse_sec=dse_sec,
+                        reason="skip_no_enhanced",
+                    )
+                    continue
+
+                selected_idx, selected_rms = select_loudest_enhanced(enhanced_batch)
+                selected_doa = pred_doas[selected_idx]
+                selected_save_name = (
+                    f"enhanced_live_chunk{chunk_index}_"
+                    f"pred{selected_doa}_idx{selected_idx}_loudest.wav"
+                )
+                enhanced_for_asr = enhanced_batch[selected_idx]
+                gt_dominant_doa = dominant_spk1_doas.get(fileid)
+                selected_doa_error = (
+                    circular_angle_error_deg(selected_doa, gt_dominant_doa)
+                    if gt_dominant_doa is not None
+                    else None
+                )
+                if gt_dominant_doa is None:
+                    missing_dominant_gt += 1
+
+                if args.save_enhanced:
+                    sf.write(str(enhanced_dir / selected_save_name), enhanced_for_asr, sr)
+
+                audio_start_sec = stream_client.total_audio_sec
+                transcript_start_idx = stream_client.transcript_count()
+                stream_paced_send_sec, chunk_audio_sec = stream_client.send_audio(enhanced_for_asr, sr)
+                transcript_delta = stream_client.transcripts_since(transcript_start_idx)
+                received_during_send_text = transcript_text(transcript_delta)
+
+                frontend_compute_sec = ipd_sec + dse_sec
+                audio_end_sec = audio_start_sec + chunk_audio_sec
+                pipeline_wall_sec = time.perf_counter() - stream_start
+                stream_audio_end_sec = stream_client.total_audio_sec
+                pipeline_lag_sec = pipeline_wall_sec - stream_audio_end_sec
+                realtime_ok = int(pipeline_lag_sec <= args.realtime_tolerance_sec)
+                scene_results.append(
+                    SceneTiming(
+                        fileid=fileid,
+                        chunk_index=chunk_index,
+                        mic_file=mic_name,
+                        duration_sec=duration_sec,
+                        audio_start_sec=audio_start_sec,
+                        audio_end_sec=audio_end_sec,
+                        predicted_doa_count=len(pred_doas),
+                        predicted_doas=",".join(str(doa) for doa in pred_doas),
+                        asr_audio_kind="enhanced",
+                        selected_enhanced_index=selected_idx,
+                        selected_doa=selected_doa,
+                        selected_rms=selected_rms,
+                        selected_enhanced_file=selected_save_name,
+                        gt_dominant_spk1_doa=gt_dominant_doa,
+                        selected_doa_error_deg=selected_doa_error,
+                        ipdnet_sec=ipd_sec,
+                        dsenet_sec=dse_sec,
+                        frontend_compute_sec=frontend_compute_sec,
+                        frontend_compute_rtf=frontend_compute_sec / duration_sec,
+                        frontend_compute_margin_sec=duration_sec - frontend_compute_sec,
+                        stream_paced_send_sec=stream_paced_send_sec,
+                        chunk_audio_sec=chunk_audio_sec,
+                        stream_audio_end_sec=stream_audio_end_sec,
+                        pipeline_wall_sec=pipeline_wall_sec,
+                        pipeline_lag_sec=pipeline_lag_sec,
+                        realtime_tolerance_sec=args.realtime_tolerance_sec,
+                        realtime_ok=realtime_ok,
+                        cumulative_rtf=pipeline_wall_sec / stream_audio_end_sec if stream_audio_end_sec > 0 else 0.0,
+                        chunk_total_wall_sec=frontend_compute_sec + stream_paced_send_sec,
+                        ipdnet_rtf=ipd_sec / duration_sec,
+                        dsenet_rtf=dse_sec / duration_sec,
+                        stream_paced_send_rtf=stream_paced_send_sec / duration_sec,
+                        received_during_send_count=len(transcript_delta),
+                        received_during_send_text=received_during_send_text,
+                        timestamp_assigned_count=0,
+                        timestamp_assigned_text="",
+                        previous_chunk_transcript_text="",
+                        timestamp_assigned_start_sec=None,
+                        timestamp_assigned_end_sec=None,
+                    )
+                )
+    except KeyboardInterrupt:
+        print("\nStopping live ReSpeaker capture and writing results collected so far...")
     finally:
         stream_client.close(args.stream_final_wait)
         if server_proc is not None:
@@ -983,6 +1394,28 @@ def main() -> None:
     for row in scene_results:
         rows_by_fileid.setdefault(row.fileid, []).append(row)
 
+    chunk_transcript_results: List[ChunkTranscript] = []
+    previous_text_by_fileid: Dict[int, str] = {}
+    for row in sorted(scene_results, key=lambda r: (r.fileid, r.chunk_index)):
+        row.previous_chunk_transcript_text = previous_text_by_fileid.get(row.fileid, "")
+        previous_text_by_fileid[row.fileid] = row.timestamp_assigned_text
+        chunk_transcript_results.append(
+            ChunkTranscript(
+                chunk_index=row.chunk_index,
+                mic_file=row.mic_file,
+                audio_start_sec=row.audio_start_sec,
+                audio_end_sec=row.audio_end_sec,
+                duration_sec=row.duration_sec,
+                asr_audio_kind=row.asr_audio_kind,
+                predicted_doa_count=row.predicted_doa_count,
+                predicted_doas=row.predicted_doas,
+                selected_doa=row.selected_doa,
+                pipeline_lag_sec=row.pipeline_lag_sec,
+                timestamp_assigned_text=row.timestamp_assigned_text,
+                hypothesis_text_cleaned=clean_asr_hypothesis_text(row.timestamp_assigned_text),
+            )
+        )
+
     scene_wer_results: List[SceneWer] = []
     missing_text = 0
     total_edits = 0
@@ -991,11 +1424,6 @@ def main() -> None:
     total_ref_words_cleaned = 0
     for fileid, rows in sorted(rows_by_fileid.items()):
         rows = sorted(rows, key=lambda r: r.chunk_index)
-        previous_text = ""
-        for row in rows:
-            row.previous_chunk_transcript_text = previous_text
-            previous_text = row.timestamp_assigned_text
-
         hypothesis_text = " ".join(
             row.timestamp_assigned_text.strip()
             for row in rows
@@ -1012,6 +1440,7 @@ def main() -> None:
         ref_words_cleaned: Optional[int] = None
         if text_path is None:
             missing_text += 1
+            continue
         else:
             sample_wer, edit_distance, ref_words = wer(reference_text, hypothesis_text)
             sample_wer_cleaned, edit_distance_cleaned, ref_words_cleaned = wer(
@@ -1050,7 +1479,7 @@ def main() -> None:
         )
 
     final_audio_sec = stream_client.total_audio_sec
-    final_wall_sec = time.perf_counter() - stream_start
+    final_wall_sec = time.perf_counter() - stream_start if timing_started else 0.0
     final_lag_sec = final_wall_sec - final_audio_sec
     final_cumulative_rtf = final_wall_sec / final_audio_sec if final_audio_sec > 0 else 0.0
 
@@ -1062,13 +1491,23 @@ def main() -> None:
         for row in scene_results:
             writer.writerow(asdict(row))
 
-    scene_wer_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_scene_wer_1asr_4s_full.csv"
-    with scene_wer_csv.open("w", newline="", encoding="utf-8") as f:
-        fieldnames = list(SceneWer.__dataclass_fields__.keys())
+    chunk_transcripts_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_chunk_transcripts_4s_full.csv"
+    with chunk_transcripts_csv.open("w", newline="", encoding="utf-8") as f:
+        fieldnames = list(ChunkTranscript.__dataclass_fields__.keys())
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        for row in scene_wer_results:
+        for row in chunk_transcript_results:
             writer.writerow(asdict(row))
+
+    scene_wer_csv: Optional[Path] = None
+    if scene_wer_results:
+        scene_wer_csv = args.out_dir / f"pipeline_streaming_{args.whisper_model}_scene_wer_1asr_4s_full.csv"
+        with scene_wer_csv.open("w", newline="", encoding="utf-8") as f:
+            fieldnames = list(SceneWer.__dataclass_fields__.keys())
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in scene_wer_results:
+                writer.writerow(asdict(row))
 
     selected_doa_errors = [
         r.selected_doa_error_deg
@@ -1091,8 +1530,22 @@ def main() -> None:
     )
 
     summary = {
-        "mic_dir": str(args.mic_dir),
-        "clean_dir": str(args.clean_dir),
+        "audio_source": args.audio_source,
+        "tcp_host": args.tcp_host,
+        "tcp_port": args.tcp_port,
+        "tcp_channels": args.tcp_channels,
+        "respeaker_rate": args.respeaker_rate,
+        "respeaker_channels": args.respeaker_channels,
+        "respeaker_width": args.respeaker_width,
+        "respeaker_index": args.respeaker_index,
+        "respeaker_frames_per_buffer": args.respeaker_frames_per_buffer,
+        "respeaker_mic_channels": ",".join(str(ch) for ch in args.respeaker_mic_channels),
+        "chunk_seconds": args.chunk_seconds,
+        "timing_origin": "first_received_audio_chunk",
+        "max_chunks": chunk_limit,
+        "save_raw_chunks": args.save_raw_chunks,
+        "clean_dir": str(args.clean_dir) if args.clean_dir is not None else "",
+        "text_dir": str(args.text_dir) if args.text_dir is not None else "",
         "ipd_ckpt": str(args.ipd_ckpt),
         "dse_ckpt": str(args.dse_ckpt),
         "whisper_model_label": args.whisper_model,
@@ -1108,14 +1561,15 @@ def main() -> None:
         "device": args.device,
         "dse_batch_size": args.num_sources,
         "selection": "loudest_enhanced_rms",
-        "max_fileids": args.max_items,
-        "max_files": args.max_files,
-        "selected_mic_wav_entries": len(target_files),
-        "unique_scene_chunk_groups": len(grouped),
+        "skip_asr_policy": args.skip_asr_policy,
+        "max_fileids": 0,
+        "selected_mic_wav_entries": 0,
+        "unique_scene_chunk_groups": len(scene_results),
         "unique_scene_fileids": len(rows_by_fileid),
         "dominant_spk1_doa_references": len(dominant_spk1_doas),
         "dominant_spk1_text_references": len(dominant_spk1_texts),
         "evaluated_chunks": len(scene_results),
+        "chunk_transcript_rows": len(chunk_transcript_results),
         "evaluated_scene_wer_items": len(evaluated_wer_rows),
         "missing_scene_text": missing_text,
         "corpus_wer": corpus_wer,
@@ -1157,11 +1611,13 @@ def main() -> None:
 
     print("\n===== STREAMING REALTIME SUMMARY =====")
     print(f"Evaluated chunks: {summary['evaluated_chunks']}")
-    print(f"Evaluated scene WER items: {summary['evaluated_scene_wer_items']}")
-    print(f"Corpus WER: {summary['corpus_wer']:.4f}")
-    print(f"Mean scene WER: {summary['mean_scene_wer']:.4f}")
-    print(f"Corpus WER cleaned: {summary['corpus_wer_cleaned']:.4f}")
-    print(f"Mean scene WER cleaned: {summary['mean_scene_wer_cleaned']:.4f}")
+    print(f"Chunk transcript rows: {summary['chunk_transcript_rows']}")
+    if summary["evaluated_scene_wer_items"] > 0:
+        print(f"Evaluated scene WER items: {summary['evaluated_scene_wer_items']}")
+        print(f"Corpus WER: {summary['corpus_wer']:.4f}")
+        print(f"Mean scene WER: {summary['mean_scene_wer']:.4f}")
+        print(f"Corpus WER cleaned: {summary['corpus_wer_cleaned']:.4f}")
+        print(f"Mean scene WER cleaned: {summary['mean_scene_wer_cleaned']:.4f}")
     print(f"Final audio sent: {summary['final_audio_sec']:.3f}s")
     print(f"Final pipeline wall time: {summary['final_pipeline_wall_sec']:.3f}s")
     print(f"Final pipeline lag: {summary['final_pipeline_lag_sec']:.3f}s")
@@ -1185,7 +1641,9 @@ def main() -> None:
     print(f"Transcript segments received: {summary['stream_transcript_segments']}")
     print(f"Transcript segments timestamp-assigned: {summary['timestamp_assigned_transcript_segments']}")
     print(f"Saved streaming details: {details_csv}")
-    print(f"Saved scene WER: {scene_wer_csv}")
+    print(f"Saved chunk transcripts: {chunk_transcripts_csv}")
+    if scene_wer_csv is not None:
+        print(f"Saved scene WER: {scene_wer_csv}")
     print(f"Saved transcripts: {transcript_jsonl}")
     print(f"Saved summary: {summary_json}")
 

@@ -31,3 +31,4 @@ Models/Simulstreaming/small.pt
 /Models/SSL/IPDNET/__pycache__
 /Models/SSL/IPDNET/DOA_eval/__pycache__
 /Models/SSL/IPDNET/utils/__pycache__
+/respeaker/IPDNET/recordings
