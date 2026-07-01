@@ -35,3 +35,7 @@ Models/SimulStreaming/small.pt
 /venv_linux
 /Models/DSE/__pycache__
 /Models/SimulStreaming/__pycache__
+/respeaker/IPDNET/results/eval
+/respeaker/IPDNET/results/pipeline_streaming_4schunks_full_respeaker_linux/pipeline_realtime_enhanced
+/respeaker/IPDNET/results/pipeline_streaming_4schunks_full_respeaker_linux/pipeline_realtime_raw_chunks
+

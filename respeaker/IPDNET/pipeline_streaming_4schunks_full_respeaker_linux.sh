@@ -38,7 +38,6 @@ python simulstreaming_whisper_server.py \
   --max_context_tokens 0 \
   --log-level WARNING 2>&1 | python clean_transcript.py
 
-  
 python pipeline_streaming_4schunks_full_respeaker_linux.py \
   --audio_source pyaudio \
   --respeaker_index 10 \
@@ -47,6 +46,7 @@ python pipeline_streaming_4schunks_full_respeaker_linux.py \
   --respeaker_channels 6 \
   --respeaker_mic_channels 1,2,3,4 \
   --chunk_seconds 4 \
-  --skip_asr_policy silence
-
-
+  --skip_asr_policy silence \
+  --raw_input_gain 5 \
+  --save_raw_chunks \
+  --save_enhanced
