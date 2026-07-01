@@ -16,12 +16,24 @@ python pipeline_streaming_4schunks_full_respeaker.py \
   --tcp_port 50007 \
   --skip_asr_policy silence
 
+
+python pipeline_streaming_4schunks_full_respeaker.py \
+  --audio_source pyaudio \
+  --respeaker_index 10 \
+  --respeaker_rate 16000 \
+  --sample_rate 16000 \
+  --respeaker_channels 6 \
+  --respeaker_mic_channels 1,2,3,4 \
+  --chunk_seconds 4 \
+  --skip_asr_policy silence
+
 # skip_asr_policy can be silence (sending silence to asr), mixture (sending raw/not enhanced to asr), drop (skip) depending on use case
+
+
+python pipeline_streaming_4schunks_full_respeaker.py --list_audio_devices
 
 
 
 python record.py --list
-
-
 
 python record.py --send_tcp --device_index 1 --capture_rate 44100 --rate 16000 --tcp_host 127.0.0.1 --tcp_port 50007 --save_chunks
