@@ -245,22 +245,30 @@ def record_audio(args: argparse.Namespace) -> None:
             stream.close()
         pa.terminate()
 
-    audio_all = np.frombuffer(b"".join(frames), dtype=np.int16).reshape(-1, len(output_channels))
+    raw_bytes = b"".join(frames)
 
-    if args.seconds > 0:
-        target_samples = int(round(args.seconds * args.rate))
-        audio_all = audio_all[:target_samples]
+    if raw_bytes:
+        audio_all = np.frombuffer(raw_bytes, dtype=np.int16).reshape(-1, len(output_channels))
 
-    with wave.open(str(args.output), "wb") as wf:
-        wf.setnchannels(len(output_channels))
-        wf.setsampwidth(args.width_bytes)
-        wf.setframerate(args.rate)
-        wf.writeframes(audio_all.astype(np.int16).tobytes())
+        if args.seconds > 0:
+            target_samples = int(round(args.seconds * args.rate))
+            audio_all = audio_all[:target_samples]
 
-    duration = 0.0
-    if frames:
-        samples = sum(len(frame) for frame in frames) / (args.width_bytes * len(output_channels))
-        duration = samples / float(args.rate)
+        with wave.open(str(args.output), "wb") as wf:
+            wf.setnchannels(len(output_channels))
+            wf.setsampwidth(args.width_bytes)
+            wf.setframerate(args.rate)
+            wf.writeframes(audio_all.astype(np.int16, copy=False).tobytes())
+
+        duration = audio_all.shape[0] / float(args.rate)
+    else:
+        with wave.open(str(args.output), "wb") as wf:
+            wf.setnchannels(len(output_channels))
+            wf.setsampwidth(args.width_bytes)
+            wf.setframerate(args.rate)
+
+        duration = 0.0
+
     print(f"* done recording: {duration:.2f}s")
     print(f"Saved {len(output_channels)}ch wav: {args.output}")
 
