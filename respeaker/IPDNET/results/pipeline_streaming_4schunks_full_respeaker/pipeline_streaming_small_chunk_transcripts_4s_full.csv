@@ -1,22 +1,19 @@
 chunk_index,mic_file,audio_start_sec,audio_end_sec,duration_sec,asr_audio_kind,predicted_doa_count,predicted_doas,selected_doa,pipeline_lag_sec,timestamp_assigned_text,hypothesis_text_cleaned
-1,respeaker_live_chunk_000001.wav,0.0,4.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.0001567799990880303,,
-2,respeaker_live_chunk_000002.wav,4.0,8.0,4.0,enhanced,3,"42,47,127",42,0.00017522000052849762,,
-3,respeaker_live_chunk_000003.wav,8.0,12.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.0001389459976053331,you you,you you
-4,respeaker_live_chunk_000004.wav,12.0,16.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.0002263669994135853,,
-5,respeaker_live_chunk_000005.wav,16.0,20.0,4.0,enhanced,3,"49,129,134",49,0.0001673379993007984,,
-6,respeaker_live_chunk_000006.wav,20.0,24.0,4.0,enhanced,3,"46,53,131",46,0.00020709800082840957,(ticking) (ticking),(ticking) (ticking)
-7,respeaker_live_chunk_000007.wav,24.0,28.0,4.0,enhanced,3,"43,50,124",124,0.00017473899788456038,(keyboard clicking),(keyboard clicking)
-8,respeaker_live_chunk_000008.wav,28.0,32.0,4.0,enhanced,3,"50,126,133",126,0.00019489599799271673,( keyboard clicking),(keyboard clicking)
-9,respeaker_live_chunk_000009.wav,32.0,36.0,4.0,enhanced,3,"55,128,133",55,0.00022133699894766323,(keyboard clicking) (keyboard clicking),(keyboard clicking) (keyboard clicking)
-10,respeaker_live_chunk_000010.wav,36.0,40.0,4.0,enhanced,3,"50,60,131",60,0.00023788899852661416,( keyboard clacking),(keyboard clacking)
-11,respeaker_live_chunk_000011.wav,40.0,44.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.00021312199896783568,(keyboard clacking),(keyboard clacking)
-12,respeaker_live_chunk_000012.wav,44.0,48.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.00017861800006357953,(keyboard,(keyboard
-13,respeaker_live_chunk_000013.wav,48.0,52.0,4.0,enhanced,3,"38,41,43",41,0.00019167500067851506,(typing) (typing,(typing) (typing
-14,respeaker_live_chunk_000014.wav,52.0,56.0,4.0,enhanced,3,"39,40,44",44,0.00024361599935218692,) (typing),) (typing)
-15,respeaker_live_chunk_000015.wav,56.0,60.0,4.0,enhanced,3,"39,41,43",43,0.0001996079990931321,,
-16,respeaker_live_chunk_000016.wav,60.0,64.0,4.0,enhanced,3,"39,44,47",39,0.00018475599790690467,(keyboard clicking) (keyboard clicking),(keyboard clicking) (keyboard clicking)
-17,respeaker_live_chunk_000017.wav,64.0,68.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.00017949099856195971,( you,(you
-18,respeaker_live_chunk_000018.wav,68.0,72.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.00017531199773657136,you,you
-19,respeaker_live_chunk_000019.wav,72.0,76.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.00021485300021595322,you,you
-20,respeaker_live_chunk_000020.wav,76.0,80.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.00016916299864533357,you,you
-21,respeaker_live_chunk_000021.wav,80.0,84.0,4.0,fallback_silence_skip_no_doa,0,,-1,0.0002211780010838993,,
+1,respeaker_live_chunk_000001.wav,0.0,4.0,4.0,enhanced,3,"67,298,359",67,0.0002507379995222436,[BLANK _AUDIO,BLANK _AUDIO
+2,respeaker_live_chunk_000002.wav,4.0,8.0,4.0,enhanced,3,"26,300,357",357,0.0002363539997531916,(gasps),(gasps)
+3,respeaker_live_chunk_000003.wav,8.0,12.0,4.0,enhanced,3,"15,294,302",302,0.00021259899949654937,(keyboard clicking) (keyboard clicking),(keyboard clicking) (keyboard clicking)
+4,respeaker_live_chunk_000004.wav,12.0,16.0,4.0,enhanced,3,"43,297,359",297,0.00020283699996070936,( pages flipping),(pages flipping)
+5,respeaker_live_chunk_000005.wav,16.0,20.0,4.0,enhanced,3,"36,293,300",300,0.0003243769997425261,,
+6,respeaker_live_chunk_000006.wav,20.0,24.0,4.0,enhanced,3,"191,257,299",191,0.00022291799996310147,Hi.,Hi.
+7,respeaker_live_chunk_000007.wav,24.0,28.0,4.0,enhanced,3,"188,245,298",188,0.00020077799945283914,(sighs) (door closes) (f,(sighs) (door closes) (f
+8,respeaker_live_chunk_000008.wav,28.0,32.0,4.0,enhanced,3,"190,289,303",190,0.00017012300031638006,(door opens),(door opens)
+9,respeaker_live_chunk_000009.wav,32.0,36.0,4.0,enhanced,3,"143,192,297",143,0.000301521999972465,[ Silence ],
+10,respeaker_live_chunk_000010.wav,36.0,40.0,4.0,enhanced,3,"258,297,327",297,0.00019305000023450702,[ Silence ],
+11,respeaker_live_chunk_000011.wav,40.0,44.0,4.0,enhanced,3,"25,182,298",182,0.0003051369994864217,[ Silence,Silence
+12,respeaker_live_chunk_000012.wav,44.0,48.0,4.0,enhanced,3,"30,152,295",295,0.00019636100023490144,],
+13,respeaker_live_chunk_000013.wav,48.0,52.0,4.0,enhanced,3,"164,198,297",164,0.00019546600015019067,]] ]]]]],
+14,respeaker_live_chunk_000014.wav,52.0,56.0,4.0,enhanced,3,"7,292,303",7,0.00020682000013039215,Thank you.,Thank you.
+15,respeaker_live_chunk_000015.wav,56.0,60.0,4.0,enhanced,3,"11,290,296",11,0.00026083299962920137,[Clock ticking],
+16,respeaker_live_chunk_000016.wav,60.0,64.0,4.0,enhanced,3,"9,293,341",341,0.00018643899966264144,(sighs),(sighs)
+17,respeaker_live_chunk_000017.wav,64.0,68.0,4.0,enhanced,3,"10,295,351",10,0.00023508399954152992,(key board clicking),(key board clicking)
+18,respeaker_live_chunk_000018.wav,68.0,72.0,4.0,enhanced,3,"9,291,303",303,0.00020335799945314648,[ Silence ],

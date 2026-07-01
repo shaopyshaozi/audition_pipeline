@@ -1,0 +1,15 @@
+chunk_index,mic_file,audio_start_sec,audio_end_sec,duration_sec,asr_audio_kind,predicted_doa_count,predicted_doas,selected_doa,pipeline_lag_sec,timestamp_assigned_text,hypothesis_text_cleaned
+1,respeaker_live_chunk_000001.wav,0.0,4.0,4.0,enhanced,3,"296,305,340",296,0.00020413699985510902,[BLANK Thank you.,BLANK Thank you.
+2,respeaker_live_chunk_000002.wav,4.0,8.0,4.0,enhanced,3,"7,59,297",297,0.0003341769997859956,Thank,Thank
+3,respeaker_live_chunk_000003.wav,8.0,12.0,4.0,enhanced,3,"47,76,297",76,0.0003118519998679403,you.,you.
+4,respeaker_live_chunk_000004.wav,12.0,16.0,4.0,enhanced,3,"27,295,300",27,0.00017933700019057142,Bye. Bye.,Bye. Bye.
+5,respeaker_live_chunk_000005.wav,16.0,20.0,4.0,enhanced,3,"253,293,304",253,0.00029739000001427485,[End,End
+6,respeaker_live_chunk_000006.wav,20.0,24.0,4.0,enhanced,3,"238,291,304",291,0.00025032499979715794,,
+7,respeaker_live_chunk_000007.wav,24.0,28.0,4.0,enhanced,3,"13,292,302",13,0.00017148499955510488,.,.
+8,respeaker_live_chunk_000008.wav,28.0,32.0,4.0,enhanced,3,"37,293,303",293,0.00029993899988767225,.,.
+9,respeaker_live_chunk_000009.wav,32.0,36.0,4.0,enhanced,3,"293,300,305",305,0.00023456199960492086,[BLANK _AUDIO],
+10,respeaker_live_chunk_000010.wav,36.0,40.0,4.0,enhanced,3,"281,294,305",281,0.00024134100021910854,[BLANK_AUDIO,BLANK_AUDIO
+11,respeaker_live_chunk_000011.wav,40.0,44.0,4.0,enhanced,3,"292,301,306",301,0.0002229289993920247,[BLANK_AUDIO,BLANK_AUDIO
+12,respeaker_live_chunk_000012.wav,44.0,48.0,4.0,enhanced,3,"293,302,305",305,0.00012953300029039383,,
+13,respeaker_live_chunk_000013.wav,48.0,52.0,4.0,enhanced,3,"7,296,310",7,0.0005459899994093576,Thank you.,Thank you.
+14,respeaker_live_chunk_000014.wav,52.0,56.0,4.0,enhanced,3,"9,290,297",9,0.00018495599942980334,[tapping ],

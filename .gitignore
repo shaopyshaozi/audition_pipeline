@@ -16,12 +16,12 @@
 /.codex_pycache
 /data/__pycache__
 /data/dataset_4mic_3spk_4s_full
-/Models/Simulstreaming/simulstreaming/whisper/whisper_streaming/__pycache__
-/Models/Simulstreaming/simulstreaming/whisper/simul_whisper/whisper/__pycache__
-/Models/Simulstreaming/simulstreaming/whisper/simul_whisper/__pycache__
-/Models/Simulstreaming/simulstreaming/whisper/__pycache__
-/Models/Simulstreaming/simulstreaming/utils/__pycache__
-Models/Simulstreaming/small.pt
+/Models/SimulStreaming/simulstreaming/whisper/whisper_streaming/__pycache__
+/Models/SimulStreaming/simulstreaming/whisper/simul_whisper/whisper/__pycache__
+/Models/SimulStreaming/simulstreaming/whisper/simul_whisper/__pycache__
+/Models/SimulStreaming/simulstreaming/whisper/__pycache__
+/Models/SimulStreaming/simulstreaming/utils/__pycache__
+Models/SimulStreaming/small.pt
 /outputs
 /Models/SSL/IPDNET2/__pycache__
 /Models/SSL/IPDNET2/arch/base/__pycache__
@@ -32,3 +32,6 @@ Models/Simulstreaming/small.pt
 /Models/SSL/IPDNET/DOA_eval/__pycache__
 /Models/SSL/IPDNET/utils/__pycache__
 /respeaker/IPDNET/recordings
+/venv_linux
+/Models/DSE/__pycache__
+/Models/SimulStreaming/__pycache__
