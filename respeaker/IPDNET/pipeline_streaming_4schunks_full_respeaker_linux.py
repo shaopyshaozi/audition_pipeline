@@ -997,6 +997,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_items", type=int, default=0, help="Deprecated alias for --max_chunks when --max_chunks is 0.")
     parser.add_argument("--save_enhanced", action="store_true", help="Save the selected loudest enhanced wav.")
     parser.add_argument("--save_raw_chunks", action="store_true", help="Save captured 4-channel ReSpeaker chunks for debugging.")
+    parser.add_argument(
+        "--raw_input_gain",
+        type=float,
+        default=1.0,
+        help="Linear gain applied to captured 4-channel chunks before frontend processing and raw chunk saving.",
+    )
     parser.add_argument("--list_audio_devices", action="store_true", help="Print PyAudio input device indices and exit.")
     parser.add_argument("--respeaker_rate", type=int, default=16000)
     parser.add_argument("--respeaker_channels", type=int, default=6)
@@ -1058,6 +1064,8 @@ def main() -> None:
         raise ValueError(
             f"--sample_rate ({args.sample_rate}) must match --respeaker_rate ({args.respeaker_rate}) for live capture."
         )
+    if args.raw_input_gain <= 0:
+        raise ValueError("--raw_input_gain must be positive.")
     if args.audio_source == "tcp" and args.tcp_channels != 4:
         raise ValueError("This IPDNET/DSENet pipeline expects 4-channel TCP input. Keep --tcp_channels 4.")
     if args.streaming_mode == "managed" and not args.streaming_model_path.is_file():
@@ -1073,6 +1081,7 @@ def main() -> None:
 
     print(f"Device: {args.device}")
     print(f"Audio source: {args.audio_source}")
+    print(f"Raw input gain: {args.raw_input_gain:g}x")
     if args.audio_source == "pyaudio":
         print(
             "ReSpeaker input: "
@@ -1262,6 +1271,8 @@ def main() -> None:
                 fileid = 1
                 sr = args.sample_rate
                 mic_name = f"respeaker_live_chunk_{chunk_index:06d}.wav"
+                if args.raw_input_gain != 1.0:
+                    wav_tc = np.clip(wav_tc * args.raw_input_gain, -1.0, 1.0).astype(np.float32)
                 if args.save_raw_chunks:
                     sf.write(str(raw_chunk_dir / mic_name), wav_tc, sr)
                 duration_sec = wav_tc.shape[0] / float(sr)
@@ -1595,6 +1606,7 @@ def main() -> None:
         "record_queue_max_chunks": args.record_queue_max_chunks,
         "respeaker_mic_channels": ",".join(str(ch) for ch in args.respeaker_mic_channels),
         "chunk_seconds": args.chunk_seconds,
+        "raw_input_gain": args.raw_input_gain,
         "timing_origin": "first_received_audio_chunk",
         "max_chunks": chunk_limit,
         "save_raw_chunks": args.save_raw_chunks,
