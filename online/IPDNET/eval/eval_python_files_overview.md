@@ -11,6 +11,17 @@ The main goal of these tests is to understand whether the full system can work
 for a real-time 3-speaker Respeaker setting, and to isolate which module is
 responsible when WER or enhanced audio quality becomes poor.
 
+The most important recent baseline is the raw/no-enhancement run:
+
+```text
+No SSL + no DSENet enhancement -> no-insertion WER: 42.83%
+```
+
+This should serve as a practical goal for the enhancement pipeline. If the
+IPDNET -> DSENet pipeline performs worse than this raw baseline, then the
+enhancement stage is not doing the right thing for the current real Respeaker
+condition.
+
 ## Common Assumptions
 
 Most pipeline scripts expect Respeaker recordings named like:
@@ -308,6 +319,74 @@ python pipeline_streaming_4schunks_full_post_processed_minor_spk_gt.py \
   --input_gain 3.0
 ```
 
+## `pipeline_streaming_4schunks_full_noenhanced.py`
+
+This is the raw Respeaker streaming ASR baseline.
+
+What it does:
+
+- Splits each long Respeaker recording into 4s chunks.
+- Applies `--input_gain` to the raw multichannel chunk.
+- By default, averages the Respeaker channels to mono.
+- Sends that raw mono signal directly to SimulStreaming Whisper.
+- Does not use SSL/IPDNET.
+- Does not use DSENet enhancement.
+- Keeps an optional `--frontend_mode full` path that can still run the old
+  IPDNET -> DSENet -> loudest-enhanced frontend, but the important default mode
+  is `--frontend_mode raw`.
+
+Why this test exists:
+
+- It checks whether the enhancement pipeline is actually helping.
+- It gives a no-SSL/no-enhancement baseline using the same 4s chunking,
+  streaming ASR, input gain, transcript assignment, and WER calculation as the
+  full pipeline.
+- It answers: "If we do nothing except stream the raw Respeaker signal, how good
+  is ASR?"
+
+Important interpretation:
+
+- This file is not trying to separate speakers.
+- It is a sanity-check baseline for the full system.
+- If raw Respeaker audio gives lower WER than enhanced audio, the enhancement
+  pipeline is damaging the ASR input or selecting/extracting the wrong content.
+- This is especially important because a speech enhancement model can make audio
+  sound more processed while still making ASR worse.
+
+What we found:
+
+- The no-SSL/no-enhancement raw baseline gives:
+
+```text
+no-insertion WER: 42.83%
+```
+
+- This should be treated as the minimum practical goal for the enhancement
+  pipeline.
+- The current IPDNET -> DSENet enhancement pipeline is not doing the right thing
+  if it cannot beat this raw baseline.
+- This finding strengthens the conclusion from the GT-DoA source-2 test: **the**
+  **current DSENet checkpoint is likely mismatched to the real Respeaker setting,**
+  **and the pipeline should be improved through a more realistic 3-speaker**
+  **simulation dataset plus fine-tuning or retraining.**
+
+Typical use:
+
+```bash
+python pipeline_streaming_4schunks_full_noenhanced.py \
+  --respeaker_dir Respeaker_recordings \
+  --out_dir results/pipeline_streaming_4schunks_full_noenhanced \
+  --frontend_mode raw \
+  --streaming_mode external \
+  --streaming_host localhost \
+  --streaming_port 43001 \
+  --stream_realtime \
+  --respeaker_source_count 3 \
+  --save_enhanced \
+  --max_items 20 \
+  --input_gain 3.0
+```
+
 ## `postprocess_enhanced_audio.py`
 
 This is a standalone post-processing tester for already saved enhanced WAVs.
@@ -394,19 +473,22 @@ What we found:
 The scripts form a diagnostic ladder:
 
 ```text
-1. Dominant pipeline, no post-process
+1. Raw Respeaker baseline, no SSL and no enhancement
+   Establishes the ASR baseline that enhancement must beat.
+
+2. Dominant pipeline, no post-process
    Tests the intended online system in its cleanest form.
 
-2. Dominant pipeline, with post-process
+3. Dominant pipeline, with post-process
    Tests whether cheap realtime DSP can improve the selected enhanced audio.
 
-3. Minor speaker with SSL
+4. Minor speaker with SSL
    Tests whether the system can handle a non-dominant target speaker.
 
-4. Minor speaker with GT DoA
+5. Minor speaker with GT DoA
    Removes SSL as a variable and directly tests DSENet with perfect DoA.
 
-5. Standalone post-processing
+6. Standalone post-processing
    Tunes DSP without rerunning the whole pipeline.
 ```
 
@@ -427,6 +509,18 @@ checkpoint is likely not robust enough for the final real 3-speaker Respeaker
 setting. That supports fine-tuning or retraining DSENet on a more realistic
 3-speaker simulation dataset.
 
+The raw/no-enhancement baseline is equally important. It shows what happens when
+the pipeline does not attempt separation at all. The current raw baseline result
+is:
+
+```text
+no-insertion WER: 42.83%
+```
+
+Therefore, the enhancement pipeline should aim to beat `42.83%` no-insertion
+WER. If it performs worse, the enhancement pipeline is not doing the right thing
+for the current real Respeaker recordings.
+
 ## Recommended Comparison Matrix
 
 For each run, compare:
@@ -446,6 +540,7 @@ saved enhanced audio listening quality
 Suggested run folders:
 
 ```text
+results/raw_noenhanced
 results/dominant_no_post
 results/dominant_post
 results/minor_spk_ssl
