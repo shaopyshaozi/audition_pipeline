@@ -47,6 +47,6 @@ python pipeline_streaming_4schunks_full_respeaker_linux.py \
   --respeaker_mic_channels 1,2,3,4 \
   --chunk_seconds 4 \
   --skip_asr_policy silence \
-  --raw_input_gain 5 \
+  --raw_input_gain 1 \
   --save_raw_chunks \
   --save_enhanced

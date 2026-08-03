@@ -19,4 +19,4 @@ python pipeline_streaming_4schunks_full.py \
   --respeaker_source_count 3 \
   --save_enhanced \
   --max_item 20 \
-  --input_gain 3.0
+  --input_gain 1.0

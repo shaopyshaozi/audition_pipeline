@@ -11,20 +11,7 @@ python simulstreaming_whisper_server.py \
 
 python pipeline_streaming_4schunks_full_noenhanced.py \
   --respeaker_dir Respeaker_recordings \
-  --out_dir results/pipeline_streaming_4schunks_full_respeaker \
-  --streaming_mode external \
-  --streaming_host localhost \
-  --streaming_port 43001 \
-  --stream_realtime \
-  --respeaker_source_count 3 \
-  --save_enhanced \
-  --max_item 20 \
-  --input_gain 3.0
-
-
-python pipeline_streaming_4schunks_full_noenhanced.py \
-  --respeaker_dir Respeaker_recordings \
   --out_dir results/raw_respeaker \
-  --input_gain 3.0 \
+  --input_gain 1.0 \
   --frontend_mode raw \
   --max_item 20 

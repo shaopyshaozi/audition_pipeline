@@ -20,4 +20,5 @@ python pipeline_streaming_4schunks_full_post_processed.py   \
     --save_enhanced \
     --save_all_enhanced   \
     --max_item 20   \
-    --input_gain 3.0
+    --input_gain 1.0 \
+    --no-postprocess_enhanced

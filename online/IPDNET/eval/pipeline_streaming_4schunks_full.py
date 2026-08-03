@@ -59,9 +59,12 @@ import Module as ssl_module  # noqa: E402
 from utils_ import forgetting_norm  # noqa: E402
 
 sys.path.insert(0, str(DSE_ROOT))
-from DOATrainer import TrainModule  # noqa: E402
+from DOATrainer_3spk_myriad import TrainModule  # noqa: E402
 from models.arch.DSENet import DSENet  # noqa: E402
 from models.utils.metrics import recover_scale  # noqa: E402
+from models.io.loss import Loss, MultiResolutionSTFTLoss
+from models.io.norm import Norm
+from models.io.stft import STFT
 
 
 def cuda_sync(device: str) -> None:
@@ -744,7 +747,28 @@ def load_dsenet(ckpt_path: Path, device: str) -> TrainModule:
         width_stage=15,
         width_control=True,
     )
-    model = TrainModule.load_from_checkpoint(str(ckpt_path), arch=arch, map_location=device)
+    stft = STFT(n_fft=256, n_hop=128, win_len=256, win="hann_window")
+    norm = Norm(mode="frequency", online=True)
+    loss = Loss(
+        loss_func=MultiResolutionSTFTLoss(
+            fft_sizes=[1024, 2048, 512],
+            hop_sizes=[120, 240, 50],
+            win_lengths=[600, 1200, 240],
+            window="hann_window",
+        ),
+        pit=False,
+        loss_func_kwargs={},
+    )
+
+    print("Loading checkpoint...")
+    model = TrainModule.load_from_checkpoint(
+        ckpt_path,
+        arch=arch,
+        stft=stft,
+        norm=norm,
+        loss=loss,
+        map_location=device
+    )
     model.eval().to(device).float()
     return model
 
@@ -885,7 +909,7 @@ def parse_args() -> argparse.Namespace:
         help="Include and pad the final short Respeaker chunk.",
     )
     parser.add_argument("--ipd_ckpt", type=Path, default=SSL_ROOT / "last-v1.ckpt")
-    parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "DSE_96.ckpt")
+    parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "last.ckpt")
     parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results" / SCRIPT_STEM)
     parser.add_argument("--whisper_model", type=str, default="small", help="Label used in output filenames.")
     parser.add_argument("--language", type=str, default="en")
