@@ -51,3 +51,5 @@ Models/SimulStreaming/small.pt
 /online/IPDNET/eval/results/pipeline_streaming_4schunks_full_respeaker_post_processed_minor_spk/concatenated_enhanced
 /online/IPDNET/eval/results/pipeline_streaming_4schunks_full_respeaker_post_processed_minor_spk/pipeline_realtime_enhanced
 /online/IPDNET/eval/results/raw_respeaker/concatenated_enhanced
+/offline/IPDNET2
+/online/IPDNET2
