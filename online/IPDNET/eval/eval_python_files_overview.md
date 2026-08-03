@@ -1,3 +1,21 @@
+# 8.3 update
+
+Previous investigation shows DSENET has poor enhancement performance. Following possible causes are raised:
+
+```
+1. DSENET is trained with 6 speakers overlapping, where the final respeaker real test is only for 3 speakers, mismatch in training and testing dataset
+2. DSENET has training data with 6 speakers start and end at the same time. Full overlapping, but in reality, there could be early end and late start. Poor performance under these edge cases
+```
+
+We fixed the above bugs. **A brand new 3 speaker dataset with early end and late start is constructed. And we retrain the DSENET based on it**
+
+**Moreover, we found a bug in previous code. There is a misalignment in training and inference data normalization in forward pass, causing poor enhancement**
+
+> Right now, the performance is significantly better than before  !!!  All code are fixed and cleaned
+
+
+# 7.27 update
+
 # Evaluation Python Files Overview
 
 This folder contains the Respeaker evaluation scripts used to test the online
