@@ -40,7 +40,7 @@ python simulstreaming_whisper_server.py \
 
 python pipeline_streaming_4schunks_full_respeaker_linux.py \
   --audio_source pyaudio \
-  --respeaker_index 10 \
+  --respeaker_index 4 \
   --respeaker_rate 16000 \
   --sample_rate 16000 \
   --respeaker_channels 6 \
@@ -50,3 +50,5 @@ python pipeline_streaming_4schunks_full_respeaker_linux.py \
   --raw_input_gain 1 \
   --save_raw_chunks \
   --save_enhanced
+
+python pipeline_streaming_4schunks_full_respeaker_linux.py --list_audio_devices
