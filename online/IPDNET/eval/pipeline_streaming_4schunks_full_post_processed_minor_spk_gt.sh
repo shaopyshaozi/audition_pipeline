@@ -11,7 +11,7 @@ python simulstreaming_whisper_server.py \
 
 
 python pipeline_streaming_4schunks_full_post_processed_minor_spk_gt.py \
-  --respeaker_dir Respeaker_recordings \
+  --respeaker_dir Respeaker_real/mic \
   --out_dir results/pipeline_streaming_4schunks_full_respeaker_minor_spk_gt \
   --streaming_mode external \
   --streaming_host localhost \

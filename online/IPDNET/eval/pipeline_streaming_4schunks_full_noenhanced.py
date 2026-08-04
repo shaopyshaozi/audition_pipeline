@@ -37,6 +37,7 @@ from tqdm import tqdm
 
 
 OFFLINE_ROOT = Path(__file__).resolve().parent.parent.parent
+EVAL_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = OFFLINE_ROOT.parent
 SCRIPT_STEM = Path(__file__).stem
 MODELS_ROOT = PROJECT_ROOT / "Models"
@@ -539,9 +540,9 @@ def load_eval_chunk_audio(
     return wav_tc, sr, valid_samples, chunk_start_sec, chunk_end_sec
 
 
-def load_respeaker_texts(recordings_dir: Path) -> Dict[int, Path]:
+def load_respeaker_texts(text_dir: Path) -> Dict[int, Path]:
     texts: Dict[int, Path] = {}
-    for text_path in sorted(recordings_dir.glob("*.txt")):
+    for text_path in sorted(text_dir.glob("*.txt")):
         if text_path.stem.isdigit():
             texts[int(text_path.stem)] = text_path
     return texts
@@ -912,7 +913,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run raw ReSpeaker input or IPDNET -> DSENet into streaming Whisper."
     )
-    parser.add_argument("--respeaker_dir", type=Path, default=OFFLINE_ROOT / "Respeaker_recordings")
+    parser.add_argument(
+        "--respeaker_dir",
+        type=Path,
+        default=EVAL_ROOT / "Respeaker_real" / "mic",
+        help="Folder containing ReSpeaker multichannel mixture wav files.",
+    )
+    parser.add_argument(
+        "--respeaker_text_dir",
+        type=Path,
+        default=EVAL_ROOT / "Respeaker_real" / "text" / "src1",
+        help="Folder containing dominant-speaker reference transcript txt files.",
+    )
     parser.add_argument(
         "--respeaker_source_count",
         type=int,
@@ -1008,6 +1020,8 @@ def main() -> None:
 
     if not args.respeaker_dir.is_dir():
         raise FileNotFoundError(f"Respeaker folder not found: {args.respeaker_dir}")
+    if not args.respeaker_text_dir.is_dir():
+        raise FileNotFoundError(f"Respeaker text folder not found: {args.respeaker_text_dir}")
     if args.streaming_mode == "managed" and not args.streaming_model_path.is_file():
         raise FileNotFoundError(f"Streaming Whisper model not found: {args.streaming_model_path}")
 
@@ -1040,7 +1054,7 @@ def main() -> None:
         fileid, _, doas = parse_respeaker_recording_name(path)
         if doas and doas[0] is not None:
             dominant_spk1_doas[fileid] = doas[0]
-    dominant_spk1_texts = load_respeaker_texts(args.respeaker_dir)
+    dominant_spk1_texts = load_respeaker_texts(args.respeaker_text_dir)
 
     print(f"Device: {args.device}")
     print(f"Streaming Whisper: {args.streaming_mode} {args.streaming_host}:{args.streaming_port}")
@@ -1064,6 +1078,7 @@ def main() -> None:
         )
         print(f"DSENet batch size: {source_count_label}")
     print(f"Respeaker input folder: {args.respeaker_dir}")
+    print(f"Respeaker dominant text folder: {args.respeaker_text_dir}")
     print(f"Respeaker chunk size: {args.chunk_sec:.3f}s")
     print(f"Include partial final chunk: {args.include_partial_chunk}")
     ipd_model: Optional[IPDNetInference] = None
@@ -1581,6 +1596,7 @@ def main() -> None:
 
     summary = {
         "respeaker_dir": str(args.respeaker_dir),
+        "respeaker_text_dir": str(args.respeaker_text_dir),
         "respeaker_source_count_filter": args.respeaker_source_count,
         "chunk_sec": args.chunk_sec,
         "include_partial_chunk": args.include_partial_chunk,

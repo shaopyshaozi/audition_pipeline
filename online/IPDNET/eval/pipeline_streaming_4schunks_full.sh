@@ -10,7 +10,7 @@ python simulstreaming_whisper_server.py \
   --log-level WARNING 2>&1 | python clean_transcript.py
 
 python pipeline_streaming_4schunks_full.py \
-  --respeaker_dir Respeaker_recordings \
+  --respeaker_dir Respeaker_real/mic \
   --out_dir results/pipeline_streaming_4schunks_full_respeaker \
   --streaming_mode external \
   --streaming_host localhost \

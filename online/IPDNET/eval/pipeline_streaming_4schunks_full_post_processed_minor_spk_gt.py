@@ -951,7 +951,12 @@ class SceneWer:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run filename GT DoA2 -> DSENet -> streaming Whisper realtime benchmark.")
-    parser.add_argument("--respeaker_dir", type=Path, default=OFFLINE_ROOT / "Respeaker_recordings")
+    parser.add_argument(
+        "--respeaker_dir",
+        type=Path,
+        default=SCRIPT_DIR / "Respeaker_real" / "mic",
+        help="Folder containing Respeaker multichannel mixture wav files.",
+    )
     parser.add_argument(
         "--respeaker_source_count",
         type=int,
