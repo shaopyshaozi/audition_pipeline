@@ -13,6 +13,9 @@ We fixed the above bugs. **A brand new 3 speaker dataset with early end and late
 
 > Right now, the performance is significantly better than before  !!!  All code are fixed and cleaned
 
+> `pipeline_streaming_4schunks_full_post_processed.py` and `postprocess_enhanced_audio.py`are no longer useful, no need for audio post processing after enhancement....
+
+
 
 # 7.27 update
 

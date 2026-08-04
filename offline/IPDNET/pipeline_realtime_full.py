@@ -381,7 +381,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run IPDNET -> DSENet -> Whisper realtime benchmark.")
     parser.add_argument("--mic_dir", type=Path, default=DSENET_DATA_ROOT / "test" / "mic")
     parser.add_argument("--ipd_ckpt", type=Path, default=SSL_ROOT / "last-v1.ckpt")
-    parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "last.ckpt")
+    parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "DSE_v13_99.ckpt")
     parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results" / SCRIPT_STEM)
     parser.add_argument("--whisper_model", type=str, default="small")
     parser.add_argument("--whisper_device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")

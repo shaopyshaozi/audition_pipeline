@@ -7,7 +7,7 @@ import pandas as pd
 
 
 SCRIPT_ROOT = Path(__file__).resolve().parent
-DEFAULT_CSV_PATH = SCRIPT_ROOT / "results" / "pipeline_1asr" /"pipeline_whisper_small_wer_details_1asr.csv"
+DEFAULT_CSV_PATH = SCRIPT_ROOT / "results" / "pipeline_1asr_4s" /"pipeline_whisper_small_scene_wer_1asr_4s.csv"
 DOA_THRESHOLD_DEG = 40
 
 
@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    df = pd.read_csv(args.csv_path)
+    df = pd.read_csv(args.csv_path, encoding = 'gbk')
 
     df["selected_doa_error_deg"] = pd.to_numeric(
         df["selected_doa_error_deg"], errors="coerce"

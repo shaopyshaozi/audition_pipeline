@@ -16,3 +16,10 @@ python online/IPDNET/pipeline_streaming_4schunks_full_noenhanced.py \
   --streaming_port 43001 \
   --max_items 50 \
   --stream_realtime
+
+python online/IPDNET/pipeline_streaming_4schunks_full_noenhanced_clean.py \
+  --streaming_mode external \
+  --streaming_host localhost \
+  --streaming_port 43001 \
+  --max_items 50 \
+  --stream_realtime
