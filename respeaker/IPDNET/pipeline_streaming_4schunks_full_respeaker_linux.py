@@ -992,7 +992,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clean_dir", type=Path, default=None, help="Optional clean-reference folder for offline-style DOA scoring.")
     parser.add_argument("--text_dir", type=Path, default=None, help="Optional text-reference folder for offline-style WER scoring.")
     parser.add_argument("--ipd_ckpt", type=Path, default=SSL_ROOT / "last-v1.ckpt")
-    parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "last.ckpt")
+    parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "DSE_v13_99.ckpt")
     parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results" / SCRIPT_STEM)
     parser.add_argument("--whisper_model", type=str, default="small", help="Label used in output filenames.")
     parser.add_argument("--language", type=str, default="en")
