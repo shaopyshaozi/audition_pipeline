@@ -122,6 +122,7 @@ setuptools==82.0.1
 shellingham==1.5.4
 six==1.17.0
 soundfile==0.13.1
+speechbrain
 soxr==1.0.0
 sympy==1.14.0
 tabulate==0.10.0

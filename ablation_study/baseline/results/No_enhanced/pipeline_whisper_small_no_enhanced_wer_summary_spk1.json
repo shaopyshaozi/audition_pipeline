@@ -1,0 +1,25 @@
+{
+  "mic_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/mic",
+  "text_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/text",
+  "whisper_model": "small",
+  "whisper_device": "cuda",
+  "enhancement": "none_noisy_mixture_channel",
+  "sample_rate": 16000,
+  "mic_channel": 1,
+  "target_speaker_id": 1,
+  "selected_mic_wav_entries": 1200,
+  "unique_fileid_groups": 400,
+  "target_text_references": 400,
+  "evaluated_utterances": 400,
+  "skipped_no_target_text": 0,
+  "overall": {
+    "evaluated_utterances": 400,
+    "corpus_wer": 0.4502939255388635,
+    "mean_sample_wer": 0.4663614148008375,
+    "mean_whisper_sec": 0.6361636506725654,
+    "mean_total_sec": 0.6361636506725654,
+    "mean_total_rtf": 0.0386127264791654,
+    "under_realtime_count": 400,
+    "under_realtime_rate": 1.0
+  }
+}

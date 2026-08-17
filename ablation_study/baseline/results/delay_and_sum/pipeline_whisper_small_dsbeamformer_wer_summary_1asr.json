@@ -1,0 +1,51 @@
+{
+  "mic_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/mic",
+  "clean_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/clean",
+  "text_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/text",
+  "ipd_ckpt": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/Models/SSL/IPDNET/last-v1.ckpt",
+  "whisper_model": "small",
+  "whisper_device": "cuda",
+  "device": "cuda",
+  "enhancement": "delay_and_sum_beamforming",
+  "doa_source": "ipdnet",
+  "beam_n_fft": 512,
+  "beam_hop": 256,
+  "sound_speed": 343.0,
+  "selected_mic_wav_entries": 1,
+  "unique_fileid_groups": 1,
+  "target_text_references": 1200,
+  "evaluated_utterances": 3,
+  "skipped_no_gt_targets": 0,
+  "skipped_no_ipdnet_doa": 0,
+  "truncated_target_ref_groups": 0,
+  "overall": {
+    "evaluated_utterances": 3,
+    "corpus_wer": 0.7251908396946565,
+    "mean_sample_wer": 0.6843647045458234,
+    "mean_steering_doa_error_deg": 23.666666666666668,
+    "median_steering_doa_error_deg": 13.0,
+    "mean_ipdnet_sec": 0.8126536940001188,
+    "mean_beamforming_sec": 0.03697034400003455,
+    "mean_whisper_sec": 0.7072278486666619,
+    "mean_total_sec": 1.5568518866668153,
+    "mean_total_rtf": 0.08834705973594457,
+    "under_realtime_count": 3,
+    "under_realtime_rate": 1.0
+  },
+  "by_method": {
+    "DSBeamformer-IPDNet": {
+      "evaluated_utterances": 3,
+      "corpus_wer": 0.7251908396946565,
+      "mean_sample_wer": 0.6843647045458234,
+      "mean_steering_doa_error_deg": 23.666666666666668,
+      "median_steering_doa_error_deg": 13.0,
+      "mean_ipdnet_sec": 0.8126536940001188,
+      "mean_beamforming_sec": 0.03697034400003455,
+      "mean_whisper_sec": 0.7072278486666619,
+      "mean_total_sec": 1.5568518866668153,
+      "mean_total_rtf": 0.08834705973594457,
+      "under_realtime_count": 3,
+      "under_realtime_rate": 1.0
+    }
+  }
+}

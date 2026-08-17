@@ -54,3 +54,12 @@ Models/SimulStreaming/small.pt
 /offline/IPDNET2
 /online/IPDNET2
 respeaker/IPDNET/realtime_testing.mp4
+/ablation_study/baseline/__pycache__
+/ablation_study/baseline/results/Conv-TasNet_libri/pipeline_convtasnet_enhanced
+/ablation_study/baseline/results/SegFormer/pipeline_sepformer_enhanced
+/ablation_study/baseline/results/MVDR/pipeline_mvdr_enhanced
+/ablation_study/baseline/results/SegFormer_libri/pipeline_sepformer_enhanced
+/venv_22.04
+/ablation_study/baseline/results/delay_and_sum/pipeline_delay_sum_enhanced
+/ablation_study/baseline/results/HARK/pipeline_hark_enhanced
+/pretrained_models
