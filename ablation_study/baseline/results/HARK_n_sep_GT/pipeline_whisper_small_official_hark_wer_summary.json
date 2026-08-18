@@ -1,0 +1,30 @@
+{
+  "evaluated_utterances": 400,
+  "corpus_wer": 0.13977792292619204,
+  "mean_sample_wer": 0.14406240762665581,
+  "mean_input_sdr": 4.907619536306063,
+  "mean_sdr": -2.1639312129208825,
+  "mean_sdri": -7.071550749226945,
+  "mean_input_si_sdr": 4.172400391099513,
+  "mean_si_sdr": -22.97089715560898,
+  "mean_sisdri": -27.143297546708492,
+  "mean_whisper_sec": 0.4818224823999662,
+  "mean_total_rtf": 0.02924980412688473,
+  "under_realtime_count": 400,
+  "under_realtime_rate": 1.0,
+  "mic_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/mic",
+  "clean_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/clean",
+  "text_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/text",
+  "official_output_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/ablation_study/baseline/results/HARK_n_sep_GT/official_hark_outputs",
+  "official_output_glob": "*.wav",
+  "whisper_model": "small",
+  "whisper_device": "cuda",
+  "target_speaker_id": 1,
+  "source_selection": "spk_order",
+  "official_hark_runtime": true,
+  "skipped": {
+    "no_target_refs": 0,
+    "no_hark_wavs": 0,
+    "selection_failed": 0
+  }
+}

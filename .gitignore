@@ -63,3 +63,11 @@ respeaker/IPDNET/realtime_testing.mp4
 /ablation_study/baseline/results/delay_and_sum/pipeline_delay_sum_enhanced
 /ablation_study/baseline/results/HARK/pipeline_hark_enhanced
 /pretrained_models
+/ablation_study/baseline/results/HARK_n/official_hark_logs
+/ablation_study/baseline/results/HARK_n/official_hark_outputs
+/ablation_study/baseline/results/HARK_n_sep+pf_GT/official_hark_logs
+/ablation_study/baseline/results/HARK_n_sep+pf_GT/official_hark_outputs
+/ablation_study/baseline/results/HARK_n_sep_GT/official_hark_logs
+/ablation_study/baseline/results/HARK_n_sep_GT/official_hark_outputs
+/ablation_study/baseline/results/HARK_n_sep_IPD/official_hark_logs
+/ablation_study/baseline/results/HARK_n_sep_IPD/official_hark_outputs
