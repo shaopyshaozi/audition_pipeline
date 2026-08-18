@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hark_xml version="1.3">
+  <positions type="tsp" coordinate="cartesian">
+    <position x="1.0000000000" y="0.0000000000" z="0.0000000000" id="0" path="/dummy"/>
+    <position x="0.9961946981" y="0.0871557427" z="0.0000000000" id="1" path="/dummy"/>
+    <position x="0.9848077530" y="0.1736481777" z="0.0000000000" id="2" path="/dummy"/>
+    <position x="0.9659258263" y="0.2588190451" z="0.0000000000" id="3" path="/dummy"/>
+    <position x="0.9396926208" y="0.3420201433" z="0.0000000000" id="4" path="/dummy"/>
+    <position x="0.9063077870" y="0.4226182617" z="0.0000000000" id="5" path="/dummy"/>
+    <position x="0.8660254038" y="0.5000000000" z="0.0000000000" id="6" path="/dummy"/>
+    <position x="0.8191520443" y="0.5735764364" z="0.0000000000" id="7" path="/dummy"/>
+    <position x="0.7660444431" y="0.6427876097" z="0.0000000000" id="8" path="/dummy"/>
+    <position x="0.7071067812" y="0.7071067812" z="0.0000000000" id="9" path="/dummy"/>
+    <position x="0.6427876097" y="0.7660444431" z="0.0000000000" id="10" path="/dummy"/>
+    <position x="0.5735764364" y="0.8191520443" z="0.0000000000" id="11" path="/dummy"/>
+    <position x="0.5000000000" y="0.8660254038" z="0.0000000000" id="12" path="/dummy"/>
+    <position x="0.4226182617" y="0.9063077870" z="0.0000000000" id="13" path="/dummy"/>
+    <position x="0.3420201433" y="0.9396926208" z="0.0000000000" id="14" path="/dummy"/>
+    <position x="0.2588190451" y="0.9659258263" z="0.0000000000" id="15" path="/dummy"/>
+    <position x="0.1736481777" y="0.9848077530" z="0.0000000000" id="16" path="/dummy"/>
+    <position x="0.0871557427" y="0.9961946981" z="0.0000000000" id="17" path="/dummy"/>
+    <position x="0.0000000000" y="1.0000000000" z="0.0000000000" id="18" path="/dummy"/>
+    <position x="-0.0871557427" y="0.9961946981" z="0.0000000000" id="19" path="/dummy"/>
+    <position x="-0.1736481777" y="0.9848077530" z="0.0000000000" id="20" path="/dummy"/>
+    <position x="-0.2588190451" y="0.9659258263" z="0.0000000000" id="21" path="/dummy"/>
+    <position x="-0.3420201433" y="0.9396926208" z="0.0000000000" id="22" path="/dummy"/>
+    <position x="-0.4226182617" y="0.9063077870" z="0.0000000000" id="23" path="/dummy"/>
+    <position x="-0.5000000000" y="0.8660254038" z="0.0000000000" id="24" path="/dummy"/>
+    <position x="-0.5735764364" y="0.8191520443" z="0.0000000000" id="25" path="/dummy"/>
+    <position x="-0.6427876097" y="0.7660444431" z="0.0000000000" id="26" path="/dummy"/>
+    <position x="-0.7071067812" y="0.7071067812" z="0.0000000000" id="27" path="/dummy"/>
+    <position x="-0.7660444431" y="0.6427876097" z="0.0000000000" id="28" path="/dummy"/>
+    <position x="-0.8191520443" y="0.5735764364" z="0.0000000000" id="29" path="/dummy"/>
+    <position x="-0.8660254038" y="0.5000000000" z="0.0000000000" id="30" path="/dummy"/>
+    <position x="-0.9063077870" y="0.4226182617" z="0.0000000000" id="31" path="/dummy"/>
+    <position x="-0.9396926208" y="0.3420201433" z="0.0000000000" id="32" path="/dummy"/>
+    <position x="-0.9659258263" y="0.2588190451" z="0.0000000000" id="33" path="/dummy"/>
+    <position x="-0.9848077530" y="0.1736481777" z="0.0000000000" id="34" path="/dummy"/>
+    <position x="-0.9961946981" y="0.0871557427" z="0.0000000000" id="35" path="/dummy"/>
+    <position x="-1.0000000000" y="0.0000000000" z="0.0000000000" id="36" path="/dummy"/>
+    <position x="-0.9961946981" y="-0.0871557427" z="0.0000000000" id="37" path="/dummy"/>
+    <position x="-0.9848077530" y="-0.1736481777" z="0.0000000000" id="38" path="/dummy"/>
+    <position x="-0.9659258263" y="-0.2588190451" z="0.0000000000" id="39" path="/dummy"/>
+    <position x="-0.9396926208" y="-0.3420201433" z="0.0000000000" id="40" path="/dummy"/>
+    <position x="-0.9063077870" y="-0.4226182617" z="0.0000000000" id="41" path="/dummy"/>
+    <position x="-0.8660254038" y="-0.5000000000" z="0.0000000000" id="42" path="/dummy"/>
+    <position x="-0.8191520443" y="-0.5735764364" z="0.0000000000" id="43" path="/dummy"/>
+    <position x="-0.7660444431" y="-0.6427876097" z="0.0000000000" id="44" path="/dummy"/>
+    <position x="-0.7071067812" y="-0.7071067812" z="0.0000000000" id="45" path="/dummy"/>
+    <position x="-0.6427876097" y="-0.7660444431" z="0.0000000000" id="46" path="/dummy"/>
+    <position x="-0.5735764364" y="-0.8191520443" z="0.0000000000" id="47" path="/dummy"/>
+    <position x="-0.5000000000" y="-0.8660254038" z="0.0000000000" id="48" path="/dummy"/>
+    <position x="-0.4226182617" y="-0.9063077870" z="0.0000000000" id="49" path="/dummy"/>
+    <position x="-0.3420201433" y="-0.9396926208" z="0.0000000000" id="50" path="/dummy"/>
+    <position x="-0.2588190451" y="-0.9659258263" z="0.0000000000" id="51" path="/dummy"/>
+    <position x="-0.1736481777" y="-0.9848077530" z="0.0000000000" id="52" path="/dummy"/>
+    <position x="-0.0871557427" y="-0.9961946981" z="0.0000000000" id="53" path="/dummy"/>
+    <position x="0.0000000000" y="-1.0000000000" z="0.0000000000" id="54" path="/dummy"/>
+    <position x="0.0871557427" y="-0.9961946981" z="0.0000000000" id="55" path="/dummy"/>
+    <position x="0.1736481777" y="-0.9848077530" z="0.0000000000" id="56" path="/dummy"/>
+    <position x="0.2588190451" y="-0.9659258263" z="0.0000000000" id="57" path="/dummy"/>
+    <position x="0.3420201433" y="-0.9396926208" z="0.0000000000" id="58" path="/dummy"/>
+    <position x="0.4226182617" y="-0.9063077870" z="0.0000000000" id="59" path="/dummy"/>
+    <position x="0.5000000000" y="-0.8660254038" z="0.0000000000" id="60" path="/dummy"/>
+    <position x="0.5735764364" y="-0.8191520443" z="0.0000000000" id="61" path="/dummy"/>
+    <position x="0.6427876097" y="-0.7660444431" z="0.0000000000" id="62" path="/dummy"/>
+    <position x="0.7071067812" y="-0.7071067812" z="0.0000000000" id="63" path="/dummy"/>
+    <position x="0.7660444431" y="-0.6427876097" z="0.0000000000" id="64" path="/dummy"/>
+    <position x="0.8191520443" y="-0.5735764364" z="0.0000000000" id="65" path="/dummy"/>
+    <position x="0.8660254038" y="-0.5000000000" z="0.0000000000" id="66" path="/dummy"/>
+    <position x="0.9063077870" y="-0.4226182617" z="0.0000000000" id="67" path="/dummy"/>
+    <position x="0.9396926208" y="-0.3420201433" z="0.0000000000" id="68" path="/dummy"/>
+    <position x="0.9659258263" y="-0.2588190451" z="0.0000000000" id="69" path="/dummy"/>
+    <position x="0.9848077530" y="-0.1736481777" z="0.0000000000" id="70" path="/dummy"/>
+    <position x="0.9961946981" y="-0.0871557427" z="0.0000000000" id="71" path="/dummy"/>
+  </positions>
+  <neighbors algorithm="NearestNeighbor">
+    <neighbor id="0" ids="0;"/>
+    <neighbor id="1" ids="1;"/>
+    <neighbor id="2" ids="2;"/>
+    <neighbor id="3" ids="3;"/>
+    <neighbor id="4" ids="4;"/>
+    <neighbor id="5" ids="5;"/>
+    <neighbor id="6" ids="6;"/>
+    <neighbor id="7" ids="7;"/>
+    <neighbor id="8" ids="8;"/>
+    <neighbor id="9" ids="9;"/>
+    <neighbor id="10" ids="10;"/>
+    <neighbor id="11" ids="11;"/>
+    <neighbor id="12" ids="12;"/>
+    <neighbor id="13" ids="13;"/>
+    <neighbor id="14" ids="14;"/>
+    <neighbor id="15" ids="15;"/>
+    <neighbor id="16" ids="16;"/>
+    <neighbor id="17" ids="17;"/>
+    <neighbor id="18" ids="18;"/>
+    <neighbor id="19" ids="19;"/>
+    <neighbor id="20" ids="20;"/>
+    <neighbor id="21" ids="21;"/>
+    <neighbor id="22" ids="22;"/>
+    <neighbor id="23" ids="23;"/>
+    <neighbor id="24" ids="24;"/>
+    <neighbor id="25" ids="25;"/>
+    <neighbor id="26" ids="26;"/>
+    <neighbor id="27" ids="27;"/>
+    <neighbor id="28" ids="28;"/>
+    <neighbor id="29" ids="29;"/>
+    <neighbor id="30" ids="30;"/>
+    <neighbor id="31" ids="31;"/>
+    <neighbor id="32" ids="32;"/>
+    <neighbor id="33" ids="33;"/>
+    <neighbor id="34" ids="34;"/>
+    <neighbor id="35" ids="35;"/>
+    <neighbor id="36" ids="36;"/>
+    <neighbor id="37" ids="37;"/>
+    <neighbor id="38" ids="38;"/>
+    <neighbor id="39" ids="39;"/>
+    <neighbor id="40" ids="40;"/>
+    <neighbor id="41" ids="41;"/>
+    <neighbor id="42" ids="42;"/>
+    <neighbor id="43" ids="43;"/>
+    <neighbor id="44" ids="44;"/>
+    <neighbor id="45" ids="45;"/>
+    <neighbor id="46" ids="46;"/>
+    <neighbor id="47" ids="47;"/>
+    <neighbor id="48" ids="48;"/>
+    <neighbor id="49" ids="49;"/>
+    <neighbor id="50" ids="50;"/>
+    <neighbor id="51" ids="51;"/>
+    <neighbor id="52" ids="52;"/>
+    <neighbor id="53" ids="53;"/>
+    <neighbor id="54" ids="54;"/>
+    <neighbor id="55" ids="55;"/>
+    <neighbor id="56" ids="56;"/>
+    <neighbor id="57" ids="57;"/>
+    <neighbor id="58" ids="58;"/>
+    <neighbor id="59" ids="59;"/>
+    <neighbor id="60" ids="60;"/>
+    <neighbor id="61" ids="61;"/>
+    <neighbor id="62" ids="62;"/>
+    <neighbor id="63" ids="63;"/>
+    <neighbor id="64" ids="64;"/>
+    <neighbor id="65" ids="65;"/>
+    <neighbor id="66" ids="66;"/>
+    <neighbor id="67" ids="67;"/>
+    <neighbor id="68" ids="68;"/>
+    <neighbor id="69" ids="69;"/>
+    <neighbor id="70" ids="70;"/>
+    <neighbor id="71" ids="71;"/>
+  </neighbors>
+</hark_xml>
