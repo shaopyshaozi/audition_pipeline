@@ -1,0 +1,56 @@
+{
+  "experiment": "DSENet forced GT_DOA + delta perturbation",
+  "mic_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/mic",
+  "clean_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/clean",
+  "text_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/text",
+  "dse_ckpt": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/Models/DSE/DSE_v13_99.ckpt",
+  "target_speaker_id": 1,
+  "max_scenes": 100,
+  "delta_magnitudes": [
+    15
+  ],
+  "random_signed_deltas": true,
+  "random_seed": 0,
+  "width": 30,
+  "metrics": [
+    "SDR",
+    "SI_SDR",
+    "WB_PESQ"
+  ],
+  "whisper_model": "small",
+  "whisper_device": "cuda",
+  "device": "cuda",
+  "sample_rate": 16000,
+  "target_references": 100,
+  "evaluated_items": 100,
+  "skipped": {
+    "outside_max_scenes": 900,
+    "non_target_speaker": 200,
+    "missing_mic": 0,
+    "missing_clean": 0
+  },
+  "summary_by_delta": [
+    {
+      "delta_magnitude_deg": 15,
+      "evaluated_items": 100,
+      "negative_delta_count": 37,
+      "positive_delta_count": 63,
+      "corpus_wer": 0.1393528183716075,
+      "mean_sample_wer": 0.1402934448855524,
+      "mean_input_sdr": 3.819831928610802,
+      "mean_sdr": 14.170045841634273,
+      "mean_sdri": 10.350213913023472,
+      "mean_input_si_sdr": 3.8024443101882937,
+      "mean_si_sdr": 13.196326614618302,
+      "mean_sisdri": 9.393882304430008,
+      "mean_input_pesq": 1.266914656162262,
+      "mean_pesq": 3.0361440098285675,
+      "mean_pesqi": 1.7692293536663055,
+      "mean_dsenet_sec": 1.7351975668699742,
+      "mean_whisper_sec": 0.443379323760073,
+      "mean_total_sec": 2.178576890630047
+    }
+  ],
+  "details_csv": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/ablation_study/DOA_analysis/results/dsenet_spk1_gt_doa_delta/doa_perturbation_wer_details.csv",
+  "summary_csv": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/ablation_study/DOA_analysis/results/dsenet_spk1_gt_doa_delta/doa_perturbation_wer_summary_by_delta.csv"
+}

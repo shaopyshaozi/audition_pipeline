@@ -71,8 +71,7 @@ The main dataset roots are:
 
 ```text
 data/dataset_4mic_3spk
-data/dataset_4mic_3spk_4s
-data/dataset_4mic_3spk_4s_full
+data/dataset_4mic_3spk_4s_full/Eval
 ```
 
 ## `pipeline_full.py`
@@ -259,7 +258,7 @@ Typical use:
 
 ```bash
 python pipeline_realtime_full.py \
-  --mic_dir ../../data/dataset_4mic_3spk_4s/test/mic \
+  --mic_dir ../../data/dataset_4mic_3spk_4s_full/Eval/mic \
   --out_dir results/pipeline_realtime_full \
   --whisper_model small \
   --dse_batch_size 3 \
@@ -308,8 +307,8 @@ Typical use:
 
 ```bash
 python pipeline_realtime_1asr.py \
-  --mic_dir ../../data/dataset_4mic_3spk_4s/Eval/mic \
-  --clean_dir ../../data/dataset_4mic_3spk_4s/Eval/clean \
+  --mic_dir ../../data/dataset_4mic_3spk_4s_full/Eval/mic_4s \
+  --clean_dir ../../data/dataset_4mic_3spk_4s_full/Eval/clean \
   --out_dir results/pipeline_realtime_1asr \
   --whisper_model small \
   --save_enhanced

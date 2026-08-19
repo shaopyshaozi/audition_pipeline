@@ -1,0 +1,2 @@
+delta_magnitude_deg,evaluated_items,negative_delta_count,positive_delta_count,corpus_wer,mean_sample_wer,mean_input_sdr,mean_sdr,mean_sdri,mean_input_si_sdr,mean_si_sdr,mean_sisdri,mean_input_pesq,mean_pesq,mean_pesqi,mean_dsenet_sec,mean_whisper_sec,mean_total_sec
+15,100,37,63,0.1393528183716075,0.1402934448855524,3.819831928610802,14.170045841634273,10.350213913023472,3.8024443101882937,13.196326614618302,9.393882304430008,1.266914656162262,3.0361440098285675,1.7692293536663055,1.7351975668699742,0.443379323760073,2.178576890630047

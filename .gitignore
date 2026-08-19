@@ -75,3 +75,8 @@ respeaker/IPDNET/realtime_testing.mp4
 /ablation_study/baseline/results/HARK_n_loc+sep+pf/official_hark_outputs
 /ablation_study/baseline/results/HARK_n_sep+pf_IPD/official_hark_logs
 /ablation_study/baseline/results/HARK_n_sep+pf_IPD/official_hark_outputs
+/data/dataset_doa_sep_3spk
+/offline/IPDNET/results/pipeline_full/pipeline_enhanced
+/results/respeaker_streaming_full_spk/hark_input_full_scenes
+/results/respeaker_streaming_full_spk/official_hark_logs
+/results/respeaker_streaming_full_spk/official_hark_outputs

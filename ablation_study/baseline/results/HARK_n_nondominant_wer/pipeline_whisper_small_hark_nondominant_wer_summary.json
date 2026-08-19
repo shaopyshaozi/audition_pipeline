@@ -1,0 +1,231 @@
+{
+  "overall": {
+    "evaluated_utterances": 3200,
+    "corpus_wer": 0.820806897673662,
+    "mean_sample_wer": 0.8689844388006231,
+    "total_edit_distance": 100910,
+    "total_ref_words": 122940,
+    "mean_sdr": -2.363496966827873,
+    "mean_sdri": 1.7036767327650149,
+    "mean_si_sdr": -28.480703595324783,
+    "mean_sisdri": -20.230210972558673,
+    "mean_doa_error_deg": 10.56375,
+    "mean_whisper_sec": 1.1837043419696922,
+    "mean_whisper_rtf": 0.07202606994756454
+  },
+  "by_setting": {
+    "HARK_n_sep+pf_GT": {
+      "evaluated_utterances": 800,
+      "corpus_wer": 0.7755327802179925,
+      "mean_sample_wer": 0.803350305807398,
+      "total_edit_distance": 23836,
+      "total_ref_words": 30735,
+      "mean_sdr": -1.8462582356629844,
+      "mean_sdri": 2.220915463929903,
+      "mean_si_sdr": -27.84218415431976,
+      "mean_sisdri": -19.59169153155365,
+      "mean_doa_error_deg": null,
+      "mean_whisper_sec": 1.400286637633767,
+      "mean_whisper_rtf": 0.08541026759361019
+    },
+    "HARK_n_sep+pf_IPD": {
+      "evaluated_utterances": 800,
+      "corpus_wer": 0.8157800553115341,
+      "mean_sample_wer": 0.8476293209260268,
+      "total_edit_distance": 25073,
+      "total_ref_words": 30735,
+      "mean_sdr": -2.009848213794925,
+      "mean_sdri": 2.0573254857979624,
+      "mean_si_sdr": -28.303884155768927,
+      "mean_sisdri": -20.05339153300282,
+      "mean_doa_error_deg": 10.56375,
+      "mean_whisper_sec": 1.3964529894012474,
+      "mean_whisper_rtf": 0.08490435761570872
+    },
+    "HARK_n_sep_GT": {
+      "evaluated_utterances": 800,
+      "corpus_wer": 0.8284691719537987,
+      "mean_sample_wer": 0.9290340614920677,
+      "total_edit_distance": 25463,
+      "total_ref_words": 30735,
+      "mean_sdr": -2.7324650539187347,
+      "mean_sdri": 1.3347086456741524,
+      "mean_si_sdr": -28.600952041044565,
+      "mean_sisdri": -20.350459418278454,
+      "mean_doa_error_deg": null,
+      "mean_whisper_sec": 0.9875657716262441,
+      "mean_whisper_rtf": 0.0602127038667001
+    },
+    "HARK_n_sep_IPD": {
+      "evaluated_utterances": 800,
+      "corpus_wer": 0.8634455832113226,
+      "mean_sample_wer": 0.8959240669770003,
+      "total_edit_distance": 26538,
+      "total_ref_words": 30735,
+      "mean_sdr": -2.8654163639348473,
+      "mean_sdri": 1.2017573356580404,
+      "mean_si_sdr": -29.175794030165886,
+      "mean_sisdri": -20.925301407399772,
+      "mean_doa_error_deg": 10.56375,
+      "mean_whisper_sec": 0.9505119692175108,
+      "mean_whisper_rtf": 0.057576950714239176
+    }
+  },
+  "by_setting_speaker": {
+    "HARK_n_sep+pf_GT:spk2": {
+      "evaluated_utterances": 400,
+      "corpus_wer": 0.7816099476439791,
+      "mean_sample_wer": 0.8025534044808871,
+      "total_edit_distance": 11943,
+      "total_ref_words": 15280,
+      "mean_sdr": -1.8282019345346618,
+      "mean_sdri": 2.265416362624602,
+      "mean_si_sdr": -27.690671670757634,
+      "mean_sisdri": -19.419346044427062,
+      "mean_doa_error_deg": null,
+      "mean_whisper_sec": 1.352181026962519,
+      "mean_whisper_rtf": 0.08277929165301433
+    },
+    "HARK_n_sep+pf_GT:spk3": {
+      "evaluated_utterances": 400,
+      "corpus_wer": 0.7695244257521837,
+      "mean_sample_wer": 0.8041472071339091,
+      "total_edit_distance": 11893,
+      "total_ref_words": 15455,
+      "mean_sdr": -1.864314536791307,
+      "mean_sdri": 2.1764145652352047,
+      "mean_si_sdr": -27.993696637881886,
+      "mean_sisdri": -19.764037018680234,
+      "mean_doa_error_deg": null,
+      "mean_whisper_sec": 1.4483922483050151,
+      "mean_whisper_rtf": 0.08804124353420605
+    },
+    "HARK_n_sep+pf_IPD:spk2": {
+      "evaluated_utterances": 400,
+      "corpus_wer": 0.8161649214659686,
+      "mean_sample_wer": 0.8359100524843754,
+      "total_edit_distance": 12471,
+      "total_ref_words": 15280,
+      "mean_sdr": -2.0063126531978406,
+      "mean_sdri": 2.087305643961423,
+      "mean_si_sdr": -28.532674594430162,
+      "mean_sisdri": -20.261348968099593,
+      "mean_doa_error_deg": 9.74,
+      "mean_whisper_sec": 1.3807612792449948,
+      "mean_whisper_rtf": 0.08408630351861397
+    },
+    "HARK_n_sep+pf_IPD:spk3": {
+      "evaluated_utterances": 400,
+      "corpus_wer": 0.8153995470721449,
+      "mean_sample_wer": 0.8593485893676782,
+      "total_edit_distance": 12602,
+      "total_ref_words": 15455,
+      "mean_sdr": -2.01338377439201,
+      "mean_sdri": 2.0273453276345013,
+      "mean_si_sdr": -28.07509371710769,
+      "mean_sisdri": -19.845434097906043,
+      "mean_doa_error_deg": 11.3875,
+      "mean_whisper_sec": 1.4121446995575002,
+      "mean_whisper_rtf": 0.08572241171280347
+    },
+    "HARK_n_sep_GT:spk2": {
+      "evaluated_utterances": 400,
+      "corpus_wer": 0.8349476439790576,
+      "mean_sample_wer": 0.8613271047868468,
+      "total_edit_distance": 12758,
+      "total_ref_words": 15280,
+      "mean_sdr": -2.722210925371603,
+      "mean_sdri": 1.3714073717876607,
+      "mean_si_sdr": -28.44206994859711,
+      "mean_sisdri": -20.170744322266536,
+      "mean_doa_error_deg": null,
+      "mean_whisper_sec": 0.9495405777174966,
+      "mean_whisper_rtf": 0.05751497831320457
+    },
+    "HARK_n_sep_GT:spk3": {
+      "evaluated_utterances": 400,
+      "corpus_wer": 0.8220640569395018,
+      "mean_sample_wer": 0.9967410181972883,
+      "total_edit_distance": 12705,
+      "total_ref_words": 15455,
+      "mean_sdr": -2.7427191824658674,
+      "mean_sdri": 1.2980099195606443,
+      "mean_si_sdr": -28.75983413349202,
+      "mean_sisdri": -20.530174514290376,
+      "mean_doa_error_deg": null,
+      "mean_whisper_sec": 1.0255909655349915,
+      "mean_whisper_rtf": 0.06291042942019565
+    },
+    "HARK_n_sep_IPD:spk2": {
+      "evaluated_utterances": 400,
+      "corpus_wer": 0.8613219895287958,
+      "mean_sample_wer": 0.884240197683234,
+      "total_edit_distance": 13161,
+      "total_ref_words": 15280,
+      "mean_sdr": -2.866770047330741,
+      "mean_sdri": 1.2268482498285227,
+      "mean_si_sdr": -29.286045624485542,
+      "mean_sisdri": -21.01471999815497,
+      "mean_doa_error_deg": 9.74,
+      "mean_whisper_sec": 0.9482102266500146,
+      "mean_whisper_rtf": 0.05746335808158467
+    },
+    "HARK_n_sep_IPD:spk3": {
+      "evaluated_utterances": 400,
+      "corpus_wer": 0.8655451310255581,
+      "mean_sample_wer": 0.9076079362707667,
+      "total_edit_distance": 13377,
+      "total_ref_words": 15455,
+      "mean_sdr": -2.8640626805389537,
+      "mean_sdri": 1.1766664214875582,
+      "mean_si_sdr": -29.06554243584623,
+      "mean_sisdri": -20.835882816644574,
+      "mean_doa_error_deg": 11.3875,
+      "mean_whisper_sec": 0.9528137117850071,
+      "mean_whisper_rtf": 0.05769054334689368
+    }
+  },
+  "settings": [
+    "HARK_n_sep_GT",
+    "HARK_n_sep_IPD",
+    "HARK_n_sep+pf_GT",
+    "HARK_n_sep+pf_IPD"
+  ],
+  "target_speaker_ids": [
+    2,
+    3
+  ],
+  "mic_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/mic",
+  "clean_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/clean",
+  "text_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/text",
+  "results_root": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/ablation_study/baseline/results",
+  "whisper_model": "small",
+  "whisper_device": "cuda",
+  "max_items": 0,
+  "skipped_by_setting": {
+    "HARK_n_sep_GT": {
+      "no_scene_dirs": 0,
+      "no_target_refs": 0,
+      "no_selected_wav": 0,
+      "asr_failed": 0
+    },
+    "HARK_n_sep_IPD": {
+      "no_scene_dirs": 0,
+      "no_target_refs": 0,
+      "no_selected_wav": 0,
+      "asr_failed": 0
+    },
+    "HARK_n_sep+pf_GT": {
+      "no_scene_dirs": 0,
+      "no_target_refs": 0,
+      "no_selected_wav": 0,
+      "asr_failed": 0
+    },
+    "HARK_n_sep+pf_IPD": {
+      "no_scene_dirs": 0,
+      "no_target_refs": 0,
+      "no_selected_wav": 0,
+      "asr_failed": 0
+    }
+  }
+}

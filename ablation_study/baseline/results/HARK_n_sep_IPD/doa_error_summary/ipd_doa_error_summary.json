@@ -1,0 +1,69 @@
+{
+  "hark_ipd_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/ablation_study/baseline/results/HARK_n_sep_IPD",
+  "text_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/text",
+  "speaker_ids": [
+    1,
+    2,
+    3
+  ],
+  "thresholds": [
+    10,
+    20,
+    30
+  ],
+  "max_items": 0,
+  "overall": {
+    "num_speaker_examples": 1200,
+    "mean_error_deg": 9.05,
+    "median_error_deg": 2.0,
+    "within_10_deg_count": 980,
+    "within_10_deg_percent": 81.66666666666667,
+    "within_20_deg_count": 1094,
+    "within_20_deg_percent": 91.16666666666667,
+    "within_30_deg_count": 1129,
+    "within_30_deg_percent": 94.08333333333333
+  },
+  "by_speaker": [
+    {
+      "speaker_id": 1,
+      "num_scenes": 400,
+      "mean_error_deg": 6.0225,
+      "median_error_deg": 2.0,
+      "within_10_deg_count": 341,
+      "within_10_deg_percent": 85.25,
+      "within_20_deg_count": 376,
+      "within_20_deg_percent": 94.0,
+      "within_30_deg_count": 389,
+      "within_30_deg_percent": 97.25
+    },
+    {
+      "speaker_id": 2,
+      "num_scenes": 400,
+      "mean_error_deg": 9.74,
+      "median_error_deg": 2.0,
+      "within_10_deg_count": 327,
+      "within_10_deg_percent": 81.75,
+      "within_20_deg_count": 362,
+      "within_20_deg_percent": 90.5,
+      "within_30_deg_count": 373,
+      "within_30_deg_percent": 93.25
+    },
+    {
+      "speaker_id": 3,
+      "num_scenes": 400,
+      "mean_error_deg": 11.3875,
+      "median_error_deg": 2.0,
+      "within_10_deg_count": 312,
+      "within_10_deg_percent": 78.0,
+      "within_20_deg_count": 356,
+      "within_20_deg_percent": 89.0,
+      "within_30_deg_count": 367,
+      "within_30_deg_percent": 91.75
+    }
+  ],
+  "skipped": {
+    "no_gt_refs": 0,
+    "no_predicted_wavs": 0
+  },
+  "selection_rule": "For each speaker, use the predicted DOA from enhanced filename closest to that speaker's GT DOA."
+}

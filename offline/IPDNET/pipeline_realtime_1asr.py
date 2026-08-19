@@ -40,7 +40,7 @@ SCRIPT_STEM = Path(__file__).stem
 MODELS_ROOT = PROJECT_ROOT / "Models"
 SSL_ROOT = MODELS_ROOT / "SSL" / "IPDNET"
 DSE_ROOT = MODELS_ROOT / "DSE"
-DSENET_DATA_ROOT = PROJECT_ROOT/ "data" / "dataset_4mic_3spk_4s"
+DSENET_DATA_ROOT = PROJECT_ROOT / "data" / "dataset_4mic_3spk_4s_full" / "Eval"
 
 sys.path.insert(0, str(SSL_ROOT))
 import FixedAarryIPDnet as ssl_model
@@ -97,6 +97,11 @@ def parse_doa(path_or_name: Path | str) -> int:
     return int(match.group(1))
 
 
+def parse_chunk_index(path_or_name: Path | str) -> int:
+    match = re.search(r"_(\d+)$", Path(path_or_name).stem)
+    return int(match.group(1)) if match else 0
+
+
 def load_multichannel_audio(path: Path, target_sr: int = 16000) -> Tuple[np.ndarray, int]:
     wav, sr = sf.read(str(path), always_2d=True)
     wav = wav.astype(np.float32)
@@ -113,16 +118,19 @@ def load_multichannel_audio(path: Path, target_sr: int = 16000) -> Tuple[np.ndar
 
 
 def unique_mic_files(mic_dir: Path, max_items: int) -> List[Path]:
-    all_files = sorted(mic_dir.glob("*.wav"), key=lambda p: (parse_fileid(p), parse_doa(p), p.name))
+    all_files = sorted(
+        mic_dir.glob("*.wav"),
+        key=lambda p: (parse_fileid(p), parse_chunk_index(p), parse_doa(p), p.name),
+    )
     if max_items > 0:
         return all_files[:max_items]
     return all_files
 
 
-def group_targets_by_fileid(mic_files: Iterable[Path]) -> Dict[int, List[Path]]:
-    grouped: Dict[int, List[Path]] = {}
+def group_targets_by_scene_chunk(mic_files: Iterable[Path]) -> Dict[Tuple[int, int], List[Path]]:
+    grouped: Dict[Tuple[int, int], List[Path]] = {}
     for path in mic_files:
-        grouped.setdefault(parse_fileid(path), []).append(path)
+        grouped.setdefault((parse_fileid(path), parse_chunk_index(path)), []).append(path)
     return grouped
 
 
@@ -390,6 +398,7 @@ def enhance_doa_batch(
 @dataclass
 class SceneTiming:
     fileid: int
+    chunk_index: int
     mic_file: str
     duration_sec: float
     predicted_doa_count: int
@@ -413,8 +422,8 @@ class SceneTiming:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run IPDNET -> DSENet -> Whisper realtime benchmark.")
-    parser.add_argument("--mic_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "mic")
-    parser.add_argument("--clean_dir", type=Path, default=DSENET_DATA_ROOT / "Eval" / "clean")
+    parser.add_argument("--mic_dir", type=Path, default=DSENET_DATA_ROOT / "mic_4s")
+    parser.add_argument("--clean_dir", type=Path, default=DSENET_DATA_ROOT / "clean")
     parser.add_argument("--ipd_ckpt", type=Path, default=SSL_ROOT / "last-v1.ckpt")
     parser.add_argument("--dse_ckpt", type=Path, default=DSE_ROOT / "DSE_v13_99.ckpt")
     parser.add_argument("--out_dir", type=Path, default=OFFLINE_ROOT / "results" / SCRIPT_STEM)
@@ -459,17 +468,17 @@ def main() -> None:
     whisper_model = whisper.load_model(args.whisper_model, device=args.whisper_device)
 
     target_files = unique_mic_files(args.mic_dir, args.max_items)
-    grouped = group_targets_by_fileid(target_files)
+    grouped = group_targets_by_scene_chunk(target_files)
     dominant_spk1_doas = load_dominant_spk1_doas(args.clean_dir)
     print(f"Selected mic wav entries: {len(target_files)}")
-    print(f"Unique fileid groups: {len(grouped)}")
+    print(f"Unique scene-chunk groups: {len(grouped)}")
     print(f"Dominant spk1 DOA references: {len(dominant_spk1_doas)}")
 
     scene_results: List[SceneTiming] = []
     skipped_no_doa = 0
     missing_dominant_gt = 0
 
-    for fileid, target_paths in tqdm(grouped.items(), desc="Realtime", unit="scene"):
+    for (fileid, chunk_index), target_paths in tqdm(grouped.items(), desc="Realtime", unit="chunk"):
         mic_path = choose_representative_mic(target_paths)
         wav_tc, sr = load_multichannel_audio(mic_path, target_sr=args.sample_rate)
         duration_sec = wav_tc.shape[0] / float(sr)
@@ -491,7 +500,7 @@ def main() -> None:
         if len(pred_doas) != args.num_sources:
             skipped_no_doa += 1
             print(
-                f"fileid={fileid}: expected {args.num_sources} SSL DOAs, "
+                f"fileid={fileid} chunk={chunk_index}: expected {args.num_sources} SSL DOAs, "
                 f"got {len(pred_doas)}, skipped."
             )
             continue
@@ -511,12 +520,14 @@ def main() -> None:
 
         if not enhanced_batch:
             skipped_no_doa += 1
-            print(f"fileid={fileid}: DSENet produced no enhanced output, skipped.")
+            print(f"fileid={fileid} chunk={chunk_index}: DSENet produced no enhanced output, skipped.")
             continue
 
         selected_idx, selected_rms = select_loudest_enhanced(enhanced_batch)
         selected_doa = pred_doas[selected_idx]
-        selected_save_name = f"enhanced_fileid_{fileid}_pred{selected_doa}_idx{selected_idx}_loudest.wav"
+        selected_save_name = (
+            f"enhanced_fileid_{fileid}_chunk{chunk_index}_pred{selected_doa}_idx{selected_idx}_loudest.wav"
+        )
         enhanced_for_asr = enhanced_batch[selected_idx]
         gt_dominant_doa = dominant_spk1_doas.get(fileid)
         selected_doa_error = (
@@ -542,6 +553,7 @@ def main() -> None:
         scene_results.append(
             SceneTiming(
                 fileid=fileid,
+                chunk_index=chunk_index,
                 mic_file=mic_path.name,
                 duration_sec=duration_sec,
                 predicted_doa_count=len(pred_doas),
@@ -589,7 +601,7 @@ def main() -> None:
         "dse_batch_size": args.num_sources,
         "selection": "loudest_enhanced_rms",
         "selected_mic_wav_entries": len(target_files),
-        "unique_fileid_groups": len(grouped),
+        "unique_scene_chunk_groups": len(grouped),
         "dominant_spk1_doa_references": len(dominant_spk1_doas),
         "evaluated_scenes": len(scene_results),
         "skipped_no_doa": skipped_no_doa,

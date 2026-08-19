@@ -1,0 +1,4 @@
+speaker_id,num_scenes,mean_error_deg,median_error_deg,within_10_deg_count,within_10_deg_percent,within_20_deg_count,within_20_deg_percent,within_30_deg_count,within_30_deg_percent
+1,400,6.0225,2.0,341,85.25,376,94.0,389,97.25
+2,400,9.74,2.0,327,81.75,362,90.5,373,93.25
+3,400,11.3875,2.0,312,78.0,356,89.0,367,91.75

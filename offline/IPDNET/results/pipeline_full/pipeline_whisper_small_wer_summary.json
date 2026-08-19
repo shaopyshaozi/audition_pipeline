@@ -1,0 +1,61 @@
+{
+  "mic_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/mic",
+  "text_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/text",
+  "ipd_ckpt": "Models/SSL/IPDNET/last-v1.ckpt",
+  "dse_ckpt": "Models/DSE/DSE_v13_99.ckpt",
+  "whisper_model": "small",
+  "whisper_device": "cuda",
+  "device": "cuda",
+  "target_wav_entries": 1200,
+  "unique_fileid_groups": 400,
+  "evaluated_items": 1200,
+  "missing_text": 0,
+  "skipped_no_doa": 0,
+  "corpus_wer": 0.17869475513085026,
+  "mean_sample_wer": 0.186077497191053,
+  "by_speaker": {
+    "spk1": {
+      "items": 400,
+      "corpus_wer": 0.11214892227302417,
+      "mean_sample_wer": 0.11795707022740848,
+      "mean_doa_error_deg": 6.0225,
+      "median_doa_error_deg": 2.0,
+      "doa_within_10_deg_count": 341,
+      "doa_within_10_deg_percent": 85.25,
+      "doa_within_20_deg_count": 376,
+      "doa_within_20_deg_percent": 94.0,
+      "doa_within_30_deg_count": 389,
+      "doa_within_30_deg_percent": 97.25
+    },
+    "spk2": {
+      "items": 400,
+      "corpus_wer": 0.2005890052356021,
+      "mean_sample_wer": 0.20537928346112408,
+      "mean_doa_error_deg": 9.7425,
+      "median_doa_error_deg": 2.0,
+      "doa_within_10_deg_count": 327,
+      "doa_within_10_deg_percent": 81.75,
+      "doa_within_20_deg_count": 362,
+      "doa_within_20_deg_percent": 90.5,
+      "doa_within_30_deg_count": 373,
+      "doa_within_30_deg_percent": 93.25
+    },
+    "spk3": {
+      "items": 400,
+      "corpus_wer": 0.22296991264962795,
+      "mean_sample_wer": 0.2348961378846265,
+      "mean_doa_error_deg": 11.3875,
+      "median_doa_error_deg": 2.0,
+      "doa_within_10_deg_count": 312,
+      "doa_within_10_deg_percent": 78.0,
+      "doa_within_20_deg_count": 356,
+      "doa_within_20_deg_percent": 89.0,
+      "doa_within_30_deg_count": 367,
+      "doa_within_30_deg_percent": 91.75
+    }
+  },
+  "mean_ipdnet_sec": 0.2775735648274872,
+  "mean_dsenet_sec": 4.769599868935,
+  "mean_whisper_sec": 0.46080160132500453,
+  "mean_total_target_sec": 5.507975035087491
+}
