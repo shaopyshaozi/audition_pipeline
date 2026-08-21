@@ -39,7 +39,7 @@ from tqdm import tqdm
 
 
 OFFLINE_ROOT = Path(__file__).resolve().parent
-PROJECT_ROOT = OFFLINE_ROOT.parent.parent
+PROJECT_ROOT = OFFLINE_ROOT.parent
 SCRIPT_STEM = Path(__file__).stem
 MODELS_ROOT = PROJECT_ROOT / "Models"
 SSL_ROOT = MODELS_ROOT / "SSL" / "IPDNET"
