@@ -23,7 +23,7 @@ option_list = [
     TestOption(name="sit", id=0),
     TestOption(name="stand up", id=1),
     TestOption(name="forward", id=6),
-    TestOption(name="backward", id=7),
+    TestOption(name="backwards", id=7),
 ]
 
 
@@ -102,7 +102,7 @@ def demo_execute_option(test_option):
     elif test_option.id == 6:
         print(f"DEMO ACTION: would call sport_client.Move({MOVE_SPEED}, 0, 0) for forward.")
     elif test_option.id == 7:
-        print(f"DEMO ACTION: would call sport_client.Move({-MOVE_SPEED}, 0, 0) for backward.")
+        print(f"DEMO ACTION: would call sport_client.Move({-MOVE_SPEED}, 0, 0) for backwards.")
 
 
 def demo_rotate_to_doa(speaker_doa):
@@ -160,7 +160,7 @@ def main() -> None:
     print("DEMO MODE: no Unitree SDK commands will be sent.")
     print(f"Reading live ASR+DoA events from: {args.live_jsonl}")
     print(f"Command cooldown: {args.command_cooldown:.1f}s")
-    print("Recognized commands: sit, stand up, forward, backward")
+    print("Recognized commands: sit, stand up, forward, backwards")
 
     offset = 0 if args.replay_existing else args.live_jsonl.stat().st_size if args.live_jsonl.exists() else 0
     seen_event_indices: Set[int] = set()
@@ -186,7 +186,7 @@ def main() -> None:
 
                 test_option = find_option_in_line(text)
                 if test_option is None:
-                    print(f"DEMO IGNORE: no matching command. DoA={event.get('selected_doa')} text={text}")
+                    #print(f"DEMO IGNORE: no matching command. DoA={event.get('selected_doa')} text={text}")
                     continue
                 if should_skip_duplicate(event, test_option, last_command_by_name, args.command_cooldown):
                     continue
