@@ -28,7 +28,7 @@ python pipeline_streaming_4schunks_full_respeaker_linux.py --list_audio_devices
 
 #-----------------------------------------------------------------------------------------------------------------------
 
-python pipeline_streaming_4schunks_full_respeaker_linux.py \
+python pipeline_streaming_4schunks_full_respeaker_linux_2.py \
   --streaming_mode external \
   --streaming_host localhost \
   --streaming_port 43001 \
