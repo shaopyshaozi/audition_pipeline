@@ -82,3 +82,8 @@ respeaker/IPDNET/realtime_testing.mp4
 /results/respeaker_streaming_full_spk/official_hark_outputs
 /offline/IPDNET/__pycache__
 /offline/IPDNET/results/pipeline_full_GT/pipeline_enhanced_GT
+
+/robot/results
+small.pt
+__pycache__/
+*.pyc

@@ -18,7 +18,7 @@ python3 Models/SimulStreaming/simulstreaming_whisper_server.py \
 
 # Terminal 2: fixed-DoA non-dominant enhancement pipeline.
 # Put the command speaker around DoA 0 degrees; other speakers can stay active at other directions.
-python3 robot/pipeline_streaming_4schunks_full_respeaker_linux_non_dominant_2.py \
+python3 pipeline_streaming_4schunks_full_respeaker_linux_non_dominant_2.py \
   --streaming_mode external \
   --streaming_host localhost \
   --streaming_port 43001 \
