@@ -1,0 +1,2 @@
+evaluated_items,corpus_wer,mean_sample_wer,mean_doa_error_deg,median_doa_error_deg,doa_within_10_deg_percent,doa_within_20_deg_percent,doa_within_30_deg_percent,mean_input_sdr,mean_sdr,mean_sdri,mean_input_si_sdr,mean_si_sdr,mean_sisdri,mean_input_wb_pesq,mean_wb_pesq,mean_wb_pesqi
+400,0.11214892227302417,0.11795707022740848,6.0225,2.0,85.25,94.0,97.25,4.209645926505328,14.987720755040646,10.778074828535319,4.192026230096817,14.257398614883423,10.065372384786606,1.2784825950860976,3.2576117971539498,1.979129202067852
