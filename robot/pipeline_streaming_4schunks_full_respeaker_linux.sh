@@ -28,7 +28,10 @@ python pipeline_streaming_4schunks_full_respeaker_linux.py --list_audio_devices
 
 #-----------------------------------------------------------------------------------------------------------------------
 
-python pipeline_streaming_4schunks_full_respeaker_linux.py \
+python3 robot/pipeline_streaming_4schunks_full_respeaker_linux.py \
+  --streaming_mode external \
+  --streaming_host localhost \
+  --streaming_port 43001 \
   --audio_source pyaudio \
   --respeaker_index 4 \
   --respeaker_rate 16000 \
