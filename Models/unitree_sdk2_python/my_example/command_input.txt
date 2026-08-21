@@ -1,0 +1,18 @@
+Please stand up and get ready.
+This sentence should not trigger anything.
+Please enter balance stand before moving.
+Please move forward for a short moment.
+Please stop move before changing direction.
+This narration line has no robot action.
+Please move backward briefly.
+Please stop move and wait.
+Please shift left carefully.
+Please stop move after the side step.
+Please shift right carefully.
+Please stop move after returning.
+Please turn left slowly.
+Please stop move after the left turn.
+Please turn right slowly.
+Please stop move after the right turn.
+This final narration line should be skipped.
+Please enter damp mode now.
