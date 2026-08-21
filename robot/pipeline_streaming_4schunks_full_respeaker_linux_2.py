@@ -1048,6 +1048,7 @@ def save_doa_cluster_plot(
     plot_path.parent.mkdir(parents=True, exist_ok=True)
     frame_indices = np.asarray(plot_data.get("times", []), dtype=np.float32)
     angles = np.asarray(plot_data.get("angles", []), dtype=np.float32)
+    vad_scores = np.asarray(plot_data.get("weights", []), dtype=np.float32)
     labels = np.asarray(plot_data.get("labels", []), dtype=np.int32)
     centers = np.asarray(plot_data.get("centers", []), dtype=np.float32)
     if frame_indices.size:
@@ -1057,6 +1058,12 @@ def save_doa_cluster_plot(
         times_sec = frame_indices
 
     fig, ax = plt.subplots(figsize=(10, 4.5))
+    score_min = float(np.min(vad_scores)) if vad_scores.size else 0.0
+    score_max = float(np.max(vad_scores)) if vad_scores.size else 1.0
+    if np.isclose(score_min, score_max):
+        score_min -= 1e-6
+        score_max += 1e-6
+    colorbar_source = None
     if angles.size == 0:
         ax.text(
             0.5,
@@ -1069,9 +1076,36 @@ def save_doa_cluster_plot(
     elif labels.size == angles.size and np.any(labels >= 0):
         for label in sorted(int(item) for item in np.unique(labels) if item >= 0):
             mask = labels == label
-            ax.scatter(times_sec[mask], angles[mask], s=28, label=f"Cluster {label}", alpha=0.9)
+            colorbar_source = ax.scatter(
+                times_sec[mask],
+                angles[mask],
+                c=vad_scores[mask],
+                cmap="viridis",
+                vmin=score_min,
+                vmax=score_max,
+                s=34,
+                edgecolors="black",
+                linewidths=0.35,
+                label=f"Cluster {label}",
+                alpha=0.95,
+            )
     else:
-        ax.scatter(times_sec, angles, s=28, label="Active points", alpha=0.9)
+        colorbar_source = ax.scatter(
+            times_sec,
+            angles,
+            c=vad_scores,
+            cmap="viridis",
+            vmin=score_min,
+            vmax=score_max,
+            s=34,
+            edgecolors="black",
+            linewidths=0.35,
+            label="Active points",
+            alpha=0.95,
+        )
+    if colorbar_source is not None:
+        cbar = fig.colorbar(colorbar_source, ax=ax, pad=0.01)
+        cbar.set_label("SSL VAD/confidence score")
 
     for center in centers:
         ax.axhline(float(center), color="black", linestyle="--", linewidth=1.2, label=f"Cluster center {center:.0f} deg")
@@ -1450,7 +1484,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max_chunks", type=int, default=0, help="Limit live 4 s chunks for a quick test; 0 means run until Ctrl+C.")
     parser.add_argument("--max_items", type=int, default=0, help="Deprecated alias for --max_chunks when --max_chunks is 0.")
-    parser.add_argument("--save_enhanced", action="store_true", help="Save the selected loudest enhanced wav.")
+    parser.add_argument("--save_enhanced", action="store_true", help="Save all enhanced candidate wavs for each chunk.")
     parser.add_argument("--save_raw_chunks", action="store_true", help="Save captured 4-channel ReSpeaker chunks for debugging.")
     parser.add_argument(
         "--save_doa_plots",
@@ -1936,10 +1970,16 @@ def main() -> None:
                     min_active_ms=args.selection_min_active_ms,
                 )
                 selected_doa = pred_doas[selected_idx]
-                selected_save_name = (
-                    f"enhanced_live_chunk{chunk_index}_"
-                    f"pred{selected_doa}_idx{selected_idx}_loudest.wav"
-                )
+                enhanced_save_names = [
+                    (
+                        f"enhanced_live_chunk{chunk_index:06d}_"
+                        f"idx{candidate_idx}_doa{candidate_doa}_"
+                        f"score{selection_scores[candidate_idx]:.6g}_"
+                        f"{'SELECTED' if candidate_idx == selected_idx else 'candidate'}.wav"
+                    )
+                    for candidate_idx, candidate_doa in enumerate(pred_doas)
+                ]
+                selected_save_name = enhanced_save_names[selected_idx]
                 save_doa_plot_if_enabled(
                     plot_path=doa_plot_dir / (
                         f"doa_chunk{chunk_index:06d}_"
@@ -1963,7 +2003,8 @@ def main() -> None:
                     missing_dominant_gt += 1
 
                 if args.save_enhanced:
-                    sf.write(str(enhanced_dir / selected_save_name), enhanced_for_asr, sr)
+                    for candidate_audio, candidate_save_name in zip(enhanced_batch, enhanced_save_names):
+                        sf.write(str(enhanced_dir / candidate_save_name), candidate_audio, sr)
                     if enhanced_concat_writer is not None:
                         enhanced_concat_writer.write(enhanced_for_asr)
 
@@ -2340,8 +2381,8 @@ def main() -> None:
         print(f"Saved raw chunks: {raw_chunk_dir}")
         print(f"Saved concatenated raw audio: {raw_concat_path}")
     if args.save_enhanced:
-        print(f"Saved enhanced chunks: {enhanced_dir}")
-        print(f"Saved concatenated enhanced audio: {enhanced_concat_path}")
+        print(f"Saved enhanced candidate chunks: {enhanced_dir}")
+        print(f"Saved concatenated selected enhanced audio: {enhanced_concat_path}")
     if args.save_doa_plots:
         print(f"Saved DoA cluster plots: {doa_plot_dir}")
     print(f"Saved streaming details: {details_csv}")
