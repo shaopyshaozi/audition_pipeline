@@ -38,16 +38,10 @@ class TestOption:
 
 
 option_list = [
-    TestOption(name="damp", id=0),
+    TestOption(name="sit", id=0),
     TestOption(name="stand up", id=1),
-    TestOption(name="stop move", id=3),
-    TestOption(name="balance stand", id=5),
     TestOption(name="forward", id=6),
     TestOption(name="backward", id=7),
-    TestOption(name="left", id=8),
-    TestOption(name="right", id=9),
-    TestOption(name="turn left", id=10),
-    TestOption(name="turn right", id=11),
 ]
 
 
@@ -97,9 +91,9 @@ def parse_args() -> argparse.Namespace:
         help="Only execute events marked is_final=true.",
     )
     parser.add_argument(
-        "--no-rotate-before-command",
+        "--allow-command-without-doa",
         action="store_true",
-        help="Execute text command without first rotating toward selected_doa.",
+        help="Execute text command even when selected_doa is missing or invalid.",
     )
     parser.add_argument(
         "--poll-interval",
@@ -274,8 +268,6 @@ def main() -> None:
     offset = args.live_jsonl.stat().st_size if args.live_jsonl.exists() else 0
     seen_event_indices: Set[int] = set()
     last_command_by_name: Dict[str, float] = {}
-    rotate_before_command = not args.no_rotate_before_command
-
     try:
         while True:
             events, offset = read_new_events(args.live_jsonl, offset)
@@ -306,8 +298,15 @@ def main() -> None:
                     f"Command: {test_option.name}, test_id: {test_option.id}, "
                     f"DoA: {selected_doa}, text: {text}"
                 )
-                if rotate_before_command and selected_doa is not None and float(selected_doa) >= 0:
-                    rotate_to_doa(sport_client, yaw_reader, float(selected_doa))
+                if selected_doa is None or float(selected_doa) < 0:
+                    if not args.allow_command_without_doa:
+                        print(f"Skipping command because selected_doa is missing or invalid: {selected_doa}")
+                        continue
+                else:
+                    rotated = rotate_to_doa(sport_client, yaw_reader, float(selected_doa))
+                    if not rotated and not args.allow_command_without_doa:
+                        print("Skipping command because rotation to DoA failed.")
+                        continue
                 execute_option(sport_client, test_option)
 
             time.sleep(args.poll_interval)
