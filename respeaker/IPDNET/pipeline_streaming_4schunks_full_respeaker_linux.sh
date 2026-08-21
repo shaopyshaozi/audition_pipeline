@@ -38,7 +38,7 @@ python simulstreaming_whisper_server.py \
   --max_context_tokens 0 \
   --log-level WARNING 2>&1 | python clean_transcript.py
 
-python pipeline_streaming_4schunks_full_respeaker_linux.py \
+python robot/pipeline_streaming_4schunks_full_respeaker_linux.py \
   --audio_source pyaudio \
   --respeaker_index 4 \
   --respeaker_rate 16000 \

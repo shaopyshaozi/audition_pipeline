@@ -42,7 +42,7 @@ python pipeline_streaming_4schunks_full_respeaker_linux.py \
   --save_enhanced
 
   
-python simulstreaming_whisper_server.py \
+python Models/SimulStreaming/simulstreaming_whisper_server.py \
   --host localhost \
   --port 43001 \
   --language en \
@@ -51,6 +51,6 @@ python simulstreaming_whisper_server.py \
   --min-chunk-size 2.0 \
   --audio_max_len 5 \
   --max_context_tokens 0 \
-  --log-level WARNING 2>&1 | python clean_transcript.py --doa-jsonl D:\邵鹏远\UCL\博1\code\audition_pipeline\robot\results\dominant\live_asr_doa_latest.jsonl
+  --log-level WARNING 2>&1 | python Models/SimulStreaming/clean_transcript.py --doa-jsonl /robot/results/dominant/live_asr_doa_latest.jsonl
 
-python D:\邵鹏远\UCL\博1\code\audition_pipeline\robot\go2w_live_asr_doa_input.py eth0
+python robot/go2w_live_asr_doa_input.py eth0
