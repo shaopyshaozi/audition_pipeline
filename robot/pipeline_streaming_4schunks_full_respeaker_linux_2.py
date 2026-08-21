@@ -80,6 +80,11 @@ def elapsed_seconds(device: str, fn):
 
 
 def circular_mean_deg_360(angles_deg: np.ndarray, weights: Optional[np.ndarray] = None) -> float:
+    """Weighted circular mean for azimuths in degrees.
+
+    This keeps wrap-around clusters such as [358, 359, 1, 2] centered near 0
+    instead of incorrectly averaging them near 180.
+    """
     angles_deg = np.asarray(angles_deg) % 360.0
     angles_rad = np.deg2rad(angles_deg)
     if weights is None:
@@ -87,6 +92,10 @@ def circular_mean_deg_360(angles_deg: np.ndarray, weights: Optional[np.ndarray] 
     x = np.sum(weights * np.cos(angles_rad))
     y = np.sum(weights * np.sin(angles_rad))
     return float(np.rad2deg(np.arctan2(y, x)) % 360.0)
+
+
+def circular_center_deg_360(angles_deg: np.ndarray, weights: Optional[np.ndarray] = None) -> int:
+    return int(round(circular_mean_deg_360(angles_deg, weights))) % 360
 
 
 def circular_angle_error_deg(pred_deg: float, gt_deg: float) -> float:
@@ -969,22 +978,39 @@ def cluster_doa_from_tensors(
     score = vad_np[0, :, :]
     active = score > vad_th
 
+    all_times = []
+    all_angles = []
+    all_scores = []
+    for t in range(azi.shape[0]):
+        for k in range(azi.shape[1]):
+            all_times.append(t)
+            all_angles.append(azi[t, k])
+            all_scores.append(score[t, k])
+
     valid_angles = []
     valid_weights = []
     valid_times = []
+    valid_scores = []
     for t in range(azi.shape[0]):
         for k in range(azi.shape[1]):
             if active[t, k]:
                 valid_angles.append(azi[t, k])
                 valid_weights.append(max(float(score[t, k]), 1e-6))
                 valid_times.append(t)
+                valid_scores.append(score[t, k])
 
     empty_plot_data = {
         "times": np.asarray(valid_times, dtype=np.float32),
         "angles": np.asarray(valid_angles, dtype=np.float32),
         "weights": np.asarray(valid_weights, dtype=np.float32),
+        "scores": np.asarray(valid_scores, dtype=np.float32),
         "labels": np.full(len(valid_angles), -1, dtype=np.int32),
         "centers": np.asarray([], dtype=np.float32),
+        "all_times": np.asarray(all_times, dtype=np.float32),
+        "all_angles": np.asarray(all_angles, dtype=np.float32),
+        "all_scores": np.asarray(all_scores, dtype=np.float32),
+        "frame_count": np.asarray([azi.shape[0]], dtype=np.int32),
+        "vad_th": np.asarray([vad_th], dtype=np.float32),
     }
     if len(valid_angles) < num_sources:
         return [], empty_plot_data
@@ -992,6 +1018,7 @@ def cluster_doa_from_tensors(
     valid_angles_np = np.asarray(valid_angles, dtype=np.float32)
     valid_weights_np = np.asarray(valid_weights, dtype=np.float32)
     valid_times_np = np.asarray(valid_times, dtype=np.float32)
+    valid_scores_np = np.asarray(valid_scores, dtype=np.float32)
     angle_rad = np.deg2rad(valid_angles_np)
     xy = np.stack([np.cos(angle_rad), np.sin(angle_rad)], axis=1)
 
@@ -1004,15 +1031,21 @@ def cluster_doa_from_tensors(
     for source_id in range(num_sources):
         cluster_angles = valid_angles_np[labels == source_id]
         cluster_weights = valid_weights_np[labels == source_id]
-        final_doas.append(int(round(circular_mean_deg_360(cluster_angles, cluster_weights))) % 360)
+        final_doas.append(circular_center_deg_360(cluster_angles, cluster_weights))
 
     final_doas = sorted(final_doas)
     plot_data = {
         "times": valid_times_np,
         "angles": valid_angles_np,
         "weights": valid_weights_np,
+        "scores": valid_scores_np,
         "labels": labels.astype(np.int32),
         "centers": np.asarray(final_doas, dtype=np.float32),
+        "all_times": np.asarray(all_times, dtype=np.float32),
+        "all_angles": np.asarray(all_angles, dtype=np.float32),
+        "all_scores": np.asarray(all_scores, dtype=np.float32),
+        "frame_count": np.asarray([azi.shape[0]], dtype=np.int32),
+        "vad_th": np.asarray([vad_th], dtype=np.float32),
     }
     return final_doas, plot_data
 
@@ -1048,27 +1081,44 @@ def save_doa_cluster_plot(
     plot_path.parent.mkdir(parents=True, exist_ok=True)
     frame_indices = np.asarray(plot_data.get("times", []), dtype=np.float32)
     angles = np.asarray(plot_data.get("angles", []), dtype=np.float32)
-    vad_scores = np.asarray(plot_data.get("weights", []), dtype=np.float32)
+    vad_scores = np.asarray(plot_data.get("scores", plot_data.get("weights", [])), dtype=np.float32)
     labels = np.asarray(plot_data.get("labels", []), dtype=np.int32)
     centers = np.asarray(plot_data.get("centers", []), dtype=np.float32)
-    if frame_indices.size:
-        max_frame = max(float(np.max(frame_indices)), 1.0)
-        times_sec = frame_indices / max_frame * duration_sec
-    else:
-        times_sec = frame_indices
+    all_frame_indices = np.asarray(plot_data.get("all_times", []), dtype=np.float32)
+    all_angles = np.asarray(plot_data.get("all_angles", []), dtype=np.float32)
+    all_scores = np.asarray(plot_data.get("all_scores", []), dtype=np.float32)
+    frame_count = int(np.asarray(plot_data.get("frame_count", [0])).reshape(-1)[0]) if "frame_count" in plot_data else 0
+    frame_denominator = max(float(frame_count - 1), 1.0)
+    times_sec = frame_indices / frame_denominator * duration_sec if frame_indices.size else frame_indices
+    all_times_sec = all_frame_indices / frame_denominator * duration_sec if all_frame_indices.size else all_frame_indices
 
     fig, ax = plt.subplots(figsize=(10, 4.5))
-    score_min = float(np.min(vad_scores)) if vad_scores.size else 0.0
-    score_max = float(np.max(vad_scores)) if vad_scores.size else 1.0
+    color_values = np.abs(all_scores) if all_scores.size else np.abs(vad_scores)
+    accepted_color_values = np.abs(vad_scores)
+    score_min = float(np.min(color_values)) if color_values.size else 0.0
+    score_max = float(np.max(color_values)) if color_values.size else 1.0
     if np.isclose(score_min, score_max):
         score_min -= 1e-6
         score_max += 1e-6
     colorbar_source = None
+    if all_angles.size:
+        colorbar_source = ax.scatter(
+            all_times_sec,
+            all_angles,
+            c=np.abs(all_scores),
+            cmap="viridis",
+            vmin=score_min,
+            vmax=score_max,
+            s=15,
+            edgecolors="none",
+            label="All SSL track points",
+            alpha=0.22,
+        )
     if angles.size == 0:
         ax.text(
             0.5,
             0.5,
-            "No active SSL DoA points",
+            "No accepted SSL DoA points",
             ha="center",
             va="center",
             transform=ax.transAxes,
@@ -1079,33 +1129,33 @@ def save_doa_cluster_plot(
             colorbar_source = ax.scatter(
                 times_sec[mask],
                 angles[mask],
-                c=vad_scores[mask],
+                c=accepted_color_values[mask],
                 cmap="viridis",
                 vmin=score_min,
                 vmax=score_max,
-                s=34,
+                s=42,
                 edgecolors="black",
-                linewidths=0.35,
-                label=f"Cluster {label}",
+                linewidths=0.45,
+                label=f"Accepted cluster {label}",
                 alpha=0.95,
             )
     else:
         colorbar_source = ax.scatter(
             times_sec,
             angles,
-            c=vad_scores,
+            c=accepted_color_values,
             cmap="viridis",
             vmin=score_min,
             vmax=score_max,
-            s=34,
+            s=42,
             edgecolors="black",
-            linewidths=0.35,
-            label="Active points",
+            linewidths=0.45,
+            label="Accepted points",
             alpha=0.95,
         )
     if colorbar_source is not None:
         cbar = fig.colorbar(colorbar_source, ax=ax, pad=0.01)
-        cbar.set_label("SSL VAD/confidence score")
+        cbar.set_label("SSL VAD/confidence magnitude")
 
     for center in centers:
         ax.axhline(float(center), color="black", linestyle="--", linewidth=1.2, label=f"Cluster center {center:.0f} deg")
