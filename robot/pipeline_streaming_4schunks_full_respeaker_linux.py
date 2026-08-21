@@ -599,6 +599,11 @@ def live_event_from_transcript(
         for item in row.predicted_doas.split(",")
         if item.strip() and item.strip().lstrip("-").isdigit()
     ]
+    selection_scores = [
+        float(item)
+        for item in row.selection_scores.split(",")
+        if item.strip()
+    ]
     return {
         "type": "asr_doa",
         "chunk_index": row.chunk_index,
@@ -610,6 +615,9 @@ def live_event_from_transcript(
         "is_final": bool(transcript.get("is_final", False)),
         "selected_doa": row.selected_doa,
         "predicted_doas": predicted_doas,
+        "selection_policy": row.selection_policy,
+        "selection_scores": selection_scores,
+        "selection_active_ratio": row.selection_active_ratio,
         "selected_enhanced_index": row.selected_enhanced_index,
         "asr_audio_kind": row.asr_audio_kind,
         "selected_enhanced_file": row.selected_enhanced_file,
@@ -810,12 +818,134 @@ def signal_rms(sig: np.ndarray) -> float:
     return float(np.sqrt(np.mean(np.square(sig64)) + 1e-12))
 
 
-def select_loudest_enhanced(enhanced_batch: Sequence[np.ndarray]) -> Tuple[int, float]:
+def frame_rms_1d(sig: np.ndarray, frame_samples: int, hop_samples: int) -> np.ndarray:
+    sig = np.asarray(sig, dtype=np.float32).reshape(-1)
+    if sig.size == 0:
+        return np.zeros(0, dtype=np.float32)
+    frame_samples = max(1, min(frame_samples, sig.size))
+    hop_samples = max(1, hop_samples)
+    values = []
+    for start in range(0, sig.size - frame_samples + 1, hop_samples):
+        frame = sig[start:start + frame_samples]
+        values.append(signal_rms(frame))
+    if not values:
+        values.append(signal_rms(sig))
+    return np.asarray(values, dtype=np.float32)
+
+
+def active_frame_mask_from_mixture(
+    wav_tc: np.ndarray,
+    sr: int,
+    frame_ms: float,
+    hop_ms: float,
+    top_fraction: float,
+    min_active_ms: float,
+) -> np.ndarray:
+    mixture = np.asarray(wav_tc, dtype=np.float32)
+    if mixture.ndim > 1:
+        mixture = mixture.mean(axis=1)
+    frame_samples = max(1, int(round(sr * frame_ms / 1000.0)))
+    hop_samples = max(1, int(round(sr * hop_ms / 1000.0)))
+    rms = frame_rms_1d(mixture, frame_samples, hop_samples)
+    if rms.size == 0:
+        return np.zeros(0, dtype=bool)
+
+    active_count = max(1, int(math.ceil(rms.size * top_fraction)))
+    min_active_count = max(1, int(math.ceil((min_active_ms / 1000.0) * sr / hop_samples)))
+    active_count = min(rms.size, max(active_count, min_active_count))
+    threshold = float(np.partition(rms, -active_count)[-active_count])
+    mask = rms >= threshold
+    if not np.any(mask):
+        mask[int(np.argmax(rms))] = True
+    return mask
+
+
+def rms_on_frame_mask(
+    sig: np.ndarray,
+    mask: np.ndarray,
+    sr: int,
+    frame_ms: float,
+    hop_ms: float,
+) -> float:
+    frame_samples = max(1, int(round(sr * frame_ms / 1000.0)))
+    hop_samples = max(1, int(round(sr * hop_ms / 1000.0)))
+    rms = frame_rms_1d(sig, frame_samples, hop_samples)
+    if rms.size == 0:
+        return signal_rms(sig)
+    usable = min(rms.size, mask.size)
+    if usable <= 0:
+        return signal_rms(sig)
+    selected = rms[:usable][mask[:usable]]
+    if selected.size == 0:
+        return signal_rms(sig)
+    return float(np.sqrt(np.mean(np.square(selected.astype(np.float64))) + 1e-12))
+
+
+def select_loudest_enhanced(enhanced_batch: Sequence[np.ndarray]) -> Tuple[int, float, List[float], float]:
     if not enhanced_batch:
         raise ValueError("Cannot select loudest enhanced signal from an empty batch.")
     rms_values = [signal_rms(enhanced) for enhanced in enhanced_batch]
     selected_idx = int(np.argmax(rms_values))
-    return selected_idx, rms_values[selected_idx]
+    return selected_idx, rms_values[selected_idx], rms_values, 1.0
+
+
+def select_active_loudest_enhanced(
+    enhanced_batch: Sequence[np.ndarray],
+    wav_tc: np.ndarray,
+    sr: int,
+    frame_ms: float,
+    hop_ms: float,
+    top_fraction: float,
+    min_active_ms: float,
+) -> Tuple[int, float, List[float], float]:
+    if not enhanced_batch:
+        raise ValueError("Cannot select loudest enhanced signal from an empty batch.")
+    mask = active_frame_mask_from_mixture(
+        wav_tc=wav_tc,
+        sr=sr,
+        frame_ms=frame_ms,
+        hop_ms=hop_ms,
+        top_fraction=top_fraction,
+        min_active_ms=min_active_ms,
+    )
+    scores = [
+        rms_on_frame_mask(
+            enhanced,
+            mask=mask,
+            sr=sr,
+            frame_ms=frame_ms,
+            hop_ms=hop_ms,
+        )
+        for enhanced in enhanced_batch
+    ]
+    selected_idx = int(np.argmax(scores))
+    active_ratio = float(np.mean(mask)) if mask.size > 0 else 0.0
+    return selected_idx, scores[selected_idx], scores, active_ratio
+
+
+def select_enhanced_for_asr(
+    enhanced_batch: Sequence[np.ndarray],
+    wav_tc: np.ndarray,
+    sr: int,
+    policy: str,
+    frame_ms: float,
+    hop_ms: float,
+    top_fraction: float,
+    min_active_ms: float,
+) -> Tuple[int, float, List[float], float]:
+    if policy == "full_rms":
+        return select_loudest_enhanced(enhanced_batch)
+    if policy == "active_rms":
+        return select_active_loudest_enhanced(
+            enhanced_batch=enhanced_batch,
+            wav_tc=wav_tc,
+            sr=sr,
+            frame_ms=frame_ms,
+            hop_ms=hop_ms,
+            top_fraction=top_fraction,
+            min_active_ms=min_active_ms,
+        )
+    raise ValueError(f"Unsupported dominant selection policy: {policy}")
 
 
 def postprocess_doa_from_tensors(
@@ -1077,6 +1207,9 @@ class SceneTiming:
     selected_enhanced_index: int
     selected_doa: int
     selected_rms: float
+    selection_policy: str
+    selection_scores: str
+    selection_active_ratio: float
     selected_enhanced_file: str
     gt_dominant_spk1_doa: Optional[int]
     selected_doa_error_deg: Optional[float]
@@ -1182,6 +1315,36 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vad_th", type=float, default=0.7)
     parser.add_argument("--width", type=int, default=30)
     parser.add_argument(
+        "--dominant_selection",
+        choices=["active_rms", "full_rms"],
+        default="active_rms",
+        help="How to choose which enhanced DOA stream is sent to ASR. active_rms scores only mixture-active frames.",
+    )
+    parser.add_argument(
+        "--selection_frame_ms",
+        type=float,
+        default=50.0,
+        help="Frame size for active_rms dominant-speaker selection.",
+    )
+    parser.add_argument(
+        "--selection_hop_ms",
+        type=float,
+        default=25.0,
+        help="Frame hop for active_rms dominant-speaker selection.",
+    )
+    parser.add_argument(
+        "--selection_top_fraction",
+        type=float,
+        default=0.25,
+        help="Fraction of highest-energy raw-mixture frames used by active_rms.",
+    )
+    parser.add_argument(
+        "--selection_min_active_ms",
+        type=float,
+        default=250.0,
+        help="Minimum active speech duration considered by active_rms.",
+    )
+    parser.add_argument(
         "--skip_asr_policy",
         choices=["silence", "mixture", "drop"],
         default="silence",
@@ -1279,6 +1442,12 @@ def main() -> None:
         raise ValueError("--raw_input_gain must be positive.")
     if args.audio_source == "tcp" and args.tcp_channels != 4:
         raise ValueError("This IPDNET/DSENet pipeline expects 4-channel TCP input. Keep --tcp_channels 4.")
+    if not (0.0 < args.selection_top_fraction <= 1.0):
+        raise ValueError("--selection_top_fraction must be in (0, 1].")
+    if args.selection_frame_ms <= 0 or args.selection_hop_ms <= 0:
+        raise ValueError("--selection_frame_ms and --selection_hop_ms must be positive.")
+    if args.selection_min_active_ms <= 0:
+        raise ValueError("--selection_min_active_ms must be positive.")
     if args.streaming_mode == "managed" and not args.streaming_model_path.is_file():
         raise FileNotFoundError(f"Streaming Whisper model not found: {args.streaming_model_path}")
 
@@ -1330,6 +1499,12 @@ def main() -> None:
     print(f"Streaming Whisper model path: {args.streaming_model_path}")
     print(f"Streaming realtime sender: {args.stream_realtime}")
     print(f"DSENet batch size: {args.num_sources}")
+    print(
+        "Dominant selection: "
+        f"{args.dominant_selection}, frame={args.selection_frame_ms:g}ms, "
+        f"hop={args.selection_hop_ms:g}ms, top_fraction={args.selection_top_fraction:g}, "
+        f"min_active={args.selection_min_active_ms:g}ms"
+    )
     if args.clean_dir is not None and args.clean_dir.is_dir():
         print(f"Optional dominant speaker clean folder: {args.clean_dir}")
     if args.text_dir is not None and args.text_dir.is_dir():
@@ -1431,6 +1606,9 @@ def main() -> None:
             selected_enhanced_index=-1,
             selected_doa=-1,
             selected_rms=signal_rms(fallback_audio),
+            selection_policy=args.dominant_selection,
+            selection_scores="",
+            selection_active_ratio=0.0,
             selected_enhanced_file=selected_save_name,
             gt_dominant_spk1_doa=None,
             selected_doa_error_deg=None,
@@ -1605,7 +1783,16 @@ def main() -> None:
                     )
                     continue
 
-                selected_idx, selected_rms = select_loudest_enhanced(enhanced_batch)
+                selected_idx, selected_rms, selection_scores, selection_active_ratio = select_enhanced_for_asr(
+                    enhanced_batch=enhanced_batch,
+                    wav_tc=wav_tc,
+                    sr=sr,
+                    policy=args.dominant_selection,
+                    frame_ms=args.selection_frame_ms,
+                    hop_ms=args.selection_hop_ms,
+                    top_fraction=args.selection_top_fraction,
+                    min_active_ms=args.selection_min_active_ms,
+                )
                 selected_doa = pred_doas[selected_idx]
                 selected_save_name = (
                     f"enhanced_live_chunk{chunk_index}_"
@@ -1651,6 +1838,9 @@ def main() -> None:
                     selected_enhanced_index=selected_idx,
                     selected_doa=selected_doa,
                     selected_rms=selected_rms,
+                    selection_policy=args.dominant_selection,
+                    selection_scores=",".join(f"{score:.8g}" for score in selection_scores),
+                    selection_active_ratio=selection_active_ratio,
                     selected_enhanced_file=selected_save_name,
                     gt_dominant_spk1_doa=gt_dominant_doa,
                     selected_doa_error_deg=selected_doa_error,
@@ -1903,7 +2093,11 @@ def main() -> None:
         "realtime_tolerance_sec": args.realtime_tolerance_sec,
         "device": args.device,
         "dse_batch_size": args.num_sources,
-        "selection": "loudest_enhanced_rms",
+        "selection": args.dominant_selection,
+        "selection_frame_ms": args.selection_frame_ms,
+        "selection_hop_ms": args.selection_hop_ms,
+        "selection_top_fraction": args.selection_top_fraction,
+        "selection_min_active_ms": args.selection_min_active_ms,
         "skip_asr_policy": args.skip_asr_policy,
         "max_fileids": 0,
         "selected_mic_wav_entries": 0,
