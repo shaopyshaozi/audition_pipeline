@@ -621,6 +621,9 @@ def live_event_from_transcript(
         "selected_enhanced_index": row.selected_enhanced_index,
         "asr_audio_kind": row.asr_audio_kind,
         "selected_enhanced_file": row.selected_enhanced_file,
+        "asr_session_id": row.asr_session_id,
+        "asr_reset_before_chunk": bool(row.asr_reset_before_chunk),
+        "asr_reset_reason": row.asr_reset_reason,
         "received_wall_sec": transcript.get("received_wall_sec"),
         "whisper": transcript,
     }
@@ -643,6 +646,8 @@ class StreamingWhisperClient:
         self.start_time = start_time
         self.connect_timeout = connect_timeout
         self.total_bytes_sent = 0
+        self.transcript_time_offset_sec = 0.0
+        self.session_id = 0
         self._sock: Optional[socket.socket] = None
         self._reader: Optional[threading.Thread] = None
         self._reader_stop = threading.Event()
@@ -655,12 +660,15 @@ class StreamingWhisperClient:
         return self.total_bytes_sent / float(STREAM_BYTES_PER_SECOND)
 
     def connect(self) -> None:
+        self._reader_stop.clear()
+        self._recv_buffer = b""
         deadline = time.perf_counter() + self.connect_timeout
         last_error: Optional[OSError] = None
         while time.perf_counter() < deadline:
             try:
                 self._sock = socket.create_connection((self.host, self.port), timeout=2.0)
                 self._sock.settimeout(0.5)
+                self.session_id += 1
                 self._reader = threading.Thread(target=self._receive_loop, daemon=True)
                 self._reader.start()
                 return
@@ -686,6 +694,14 @@ class StreamingWhisperClient:
                 line = raw_line.decode("utf-8", errors="replace")
                 transcript = _decode_transcript_line(line)
                 if transcript:
+                    if "start" in transcript:
+                        transcript["asr_local_start"] = transcript["start"]
+                        transcript["start"] = float(transcript["start"]) + self.transcript_time_offset_sec
+                    if "end" in transcript:
+                        transcript["asr_local_end"] = transcript["end"]
+                        transcript["end"] = float(transcript["end"]) + self.transcript_time_offset_sec
+                    transcript["asr_session_id"] = self.session_id
+                    transcript["asr_time_offset_sec"] = self.transcript_time_offset_sec
                     transcript["received_wall_sec"] = time.perf_counter() - self.start_time
                     with self._transcript_lock:
                         self._transcripts.append(transcript)
@@ -739,6 +755,12 @@ class StreamingWhisperClient:
         except OSError:
             pass
         self._sock = None
+        self._reader = None
+
+    def reset_connection(self, final_wait_sec: float) -> None:
+        self.close(final_wait_sec)
+        self.transcript_time_offset_sec = self.total_audio_sec
+        self.connect()
 
 
 def start_streaming_whisper_server(args: argparse.Namespace) -> subprocess.Popen:
@@ -1211,6 +1233,9 @@ class SceneTiming:
     selection_scores: str
     selection_active_ratio: float
     selected_enhanced_file: str
+    asr_session_id: int
+    asr_reset_before_chunk: int
+    asr_reset_reason: str
     gt_dominant_spk1_doa: Optional[int]
     selected_doa_error_deg: Optional[float]
     ipdnet_sec: float
@@ -1275,6 +1300,8 @@ class ChunkTranscript:
     predicted_doas: str
     selected_doa: int
     pipeline_lag_sec: float
+    asr_session_id: int
+    asr_reset_before_chunk: int
     timestamp_assigned_text: str
     hypothesis_text_cleaned: str
 
@@ -1402,6 +1429,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stream_realtime", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--stream_final_wait", type=float, default=2.0)
     parser.add_argument(
+        "--reset_asr_on_doa_change",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Reset the SimulStreaming TCP connection when selected DoA changes beyond --asr_reset_doa_threshold_deg.",
+    )
+    parser.add_argument(
+        "--asr_reset_doa_threshold_deg",
+        type=float,
+        default=30.0,
+        help="Circular DoA change threshold that triggers a SimulStreaming state reset.",
+    )
+    parser.add_argument(
+        "--asr_reset_final_wait",
+        type=float,
+        default=0.2,
+        help="Seconds to wait for final transcript output before reconnecting after a DoA reset.",
+    )
+    parser.add_argument(
         "--live_event_jsonl",
         type=Path,
         default=None,
@@ -1448,6 +1493,10 @@ def main() -> None:
         raise ValueError("--selection_frame_ms and --selection_hop_ms must be positive.")
     if args.selection_min_active_ms <= 0:
         raise ValueError("--selection_min_active_ms must be positive.")
+    if args.asr_reset_doa_threshold_deg <= 0:
+        raise ValueError("--asr_reset_doa_threshold_deg must be positive.")
+    if args.asr_reset_final_wait < 0:
+        raise ValueError("--asr_reset_final_wait must be >= 0.")
     if args.streaming_mode == "managed" and not args.streaming_model_path.is_file():
         raise FileNotFoundError(f"Streaming Whisper model not found: {args.streaming_model_path}")
 
@@ -1498,6 +1547,11 @@ def main() -> None:
     print(f"Streaming Whisper: {args.streaming_mode} {args.streaming_host}:{args.streaming_port}")
     print(f"Streaming Whisper model path: {args.streaming_model_path}")
     print(f"Streaming realtime sender: {args.stream_realtime}")
+    print(
+        "ASR reset on DoA change: "
+        f"{args.reset_asr_on_doa_change}, threshold={args.asr_reset_doa_threshold_deg:g} deg, "
+        f"final_wait={args.asr_reset_final_wait:g}s"
+    )
     print(f"DSENet batch size: {args.num_sources}")
     print(
         "Dominant selection: "
@@ -1539,6 +1593,7 @@ def main() -> None:
     missing_dominant_gt = 0
     timing_started = False
     emitted_transcript_keys: set[Tuple[Any, ...]] = set()
+    last_asr_selected_doa: Optional[int] = None
 
     def emit_live_events(transcripts: Sequence[Dict[str, Any]]) -> None:
         for transcript in transcripts:
@@ -1610,6 +1665,9 @@ def main() -> None:
             selection_scores="",
             selection_active_ratio=0.0,
             selected_enhanced_file=selected_save_name,
+            asr_session_id=stream_client.session_id,
+            asr_reset_before_chunk=0,
+            asr_reset_reason="",
             gt_dominant_spk1_doa=None,
             selected_doa_error_deg=None,
             ipdnet_sec=ipd_sec,
@@ -1813,9 +1871,30 @@ def main() -> None:
                     if enhanced_concat_writer is not None:
                         enhanced_concat_writer.write(enhanced_for_asr)
 
+                asr_reset_before_chunk = 0
+                asr_reset_reason = ""
+                if (
+                    args.reset_asr_on_doa_change
+                    and last_asr_selected_doa is not None
+                    and circular_angle_error_deg(selected_doa, last_asr_selected_doa) > args.asr_reset_doa_threshold_deg
+                ):
+                    doa_jump = circular_angle_error_deg(selected_doa, last_asr_selected_doa)
+                    asr_reset_before_chunk = 1
+                    asr_reset_reason = (
+                        f"selected_doa_changed_from_{last_asr_selected_doa}_to_{selected_doa}"
+                        f"_delta_{doa_jump:.1f}_deg"
+                    )
+                    print(
+                        "Resetting SimulStreaming ASR state before chunk "
+                        f"{chunk_index}: {asr_reset_reason}"
+                    )
+                    stream_client.reset_connection(args.asr_reset_final_wait)
+                    emit_live_events(stream_client.all_transcripts())
+
                 audio_start_sec = stream_client.total_audio_sec
                 transcript_start_idx = stream_client.transcript_count()
                 stream_paced_send_sec, chunk_audio_sec = stream_client.send_audio(enhanced_for_asr, sr)
+                last_asr_selected_doa = selected_doa
                 transcript_delta = stream_client.transcripts_since(transcript_start_idx)
                 received_during_send_text = transcript_text(transcript_delta)
 
@@ -1842,6 +1921,9 @@ def main() -> None:
                     selection_scores=",".join(f"{score:.8g}" for score in selection_scores),
                     selection_active_ratio=selection_active_ratio,
                     selected_enhanced_file=selected_save_name,
+                    asr_session_id=stream_client.session_id,
+                    asr_reset_before_chunk=asr_reset_before_chunk,
+                    asr_reset_reason=asr_reset_reason,
                     gt_dominant_spk1_doa=gt_dominant_doa,
                     selected_doa_error_deg=selected_doa_error,
                     ipdnet_sec=ipd_sec,
@@ -1934,6 +2016,8 @@ def main() -> None:
                 predicted_doas=row.predicted_doas,
                 selected_doa=row.selected_doa,
                 pipeline_lag_sec=row.pipeline_lag_sec,
+                asr_session_id=row.asr_session_id,
+                asr_reset_before_chunk=row.asr_reset_before_chunk,
                 timestamp_assigned_text=row.timestamp_assigned_text,
                 hypothesis_text_cleaned=clean_asr_hypothesis_text(row.timestamp_assigned_text),
             )
@@ -2090,6 +2174,9 @@ def main() -> None:
         "streaming_audio_max_len": args.streaming_audio_max_len,
         "stream_realtime": args.stream_realtime,
         "stream_packet_ms": args.stream_packet_ms,
+        "reset_asr_on_doa_change": args.reset_asr_on_doa_change,
+        "asr_reset_doa_threshold_deg": args.asr_reset_doa_threshold_deg,
+        "asr_reset_final_wait": args.asr_reset_final_wait,
         "realtime_tolerance_sec": args.realtime_tolerance_sec,
         "device": args.device,
         "dse_batch_size": args.num_sources,
@@ -2141,6 +2228,9 @@ def main() -> None:
         "final_realtime_ok": int(final_lag_sec <= args.realtime_tolerance_sec) if final_audio_sec > 0 else 0,
         "stream_transcript_segments": len(all_transcripts),
         "timestamp_assigned_transcript_segments": int(sum(r.timestamp_assigned_count for r in scene_results)),
+        "asr_session_count": stream_client.session_id,
+        "asr_reset_count": int(sum(r.asr_reset_before_chunk for r in scene_results)),
+        "asr_reset_chunks": ",".join(str(r.chunk_index) for r in scene_results if r.asr_reset_before_chunk),
     }
 
     summary_json = args.out_dir / f"pipeline_streaming_{args.whisper_model}_summary_1asr_4s_full.json"
@@ -2177,6 +2267,8 @@ def main() -> None:
     )
     print(f"Transcript segments received: {summary['stream_transcript_segments']}")
     print(f"Transcript segments timestamp-assigned: {summary['timestamp_assigned_transcript_segments']}")
+    print(f"ASR sessions: {summary['asr_session_count']}")
+    print(f"ASR resets on DoA change: {summary['asr_reset_count']}")
     print(f"Dominant experiment directory: {args.out_dir}")
     print(f"Saved live ASR+DoA JSONL: {args.live_event_jsonl}")
     print(f"Saved latest ASR+DoA JSONL: {args.latest_live_event_jsonl}")
