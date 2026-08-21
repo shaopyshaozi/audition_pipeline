@@ -285,7 +285,7 @@ def main() -> None:
 
                 selected_doa = event.get("selected_doa")
                 print(
-                    f"DEMO COMMAND RECEIVED: command={test_option.name}, "
+                    f"\n DEMO COMMAND RECEIVED: command={test_option.name}, "
                     f"test_id={test_option.id}, DoA={selected_doa}, "
                     f"used_context={used_context}, text={text}"
                 )
