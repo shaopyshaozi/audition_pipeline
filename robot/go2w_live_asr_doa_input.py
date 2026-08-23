@@ -214,31 +214,11 @@ def trim_recent_events(
     return trimmed[-max_events:]
 
 
-def execute_option(sport_client, test_option):
-    code = None
-
-    if test_option.id == 0:
-        code = sport_client.Damp()
-    elif test_option.id == 1:
-        code = sport_client.StandUp()
-    elif test_option.id == 3:
-        code = sport_client.StopMove()
-    elif test_option.id == 5:
-        code = sport_client.BalanceStand()
-    elif test_option.id == 6:
-        code = sport_client.Move(MOVE_SPEED, 0, 0)
-    elif test_option.id == 7:
-        code = sport_client.Move(-MOVE_SPEED, 0, 0)
-    elif test_option.id == 8:
-        code = sport_client.Move(0, SIDE_SPEED, 0)
-    elif test_option.id == 9:
-        code = sport_client.Move(0, -SIDE_SPEED, 0)
-    elif test_option.id == 10:
-        code = sport_client.Move(0, 0, TURN_SPEED)
-    elif test_option.id == 11:
-        code = sport_client.Move(0, 0, -TURN_SPEED)
-
-    print(f"Return code: {code}")
+def prepare_balance_stand(sport_client):
+    print("Preparing BalanceStand before rotation.")
+    balance_code = sport_client.BalanceStand()
+    print(f"BalanceStand return code: {balance_code}")
+    time.sleep(1.0)
 
 
 def wrap_degrees(angle):
@@ -251,16 +231,13 @@ def rotate_to_doa(sport_client, yaw_reader, speaker_doa):
         print("No robot yaw received. Check the network interface and LowState topic.")
         return False
 
-    print("Preparing BalanceStand before rotation.")
-    balance_code = sport_client.BalanceStand()
-    print(f"BalanceStand return code: {balance_code}")
-    time.sleep(1.0)
-
-    target_yaw = wrap_degrees(start_yaw + speaker_doa)
+    turn_degrees = speaker_doa - 360 if speaker_doa > 180 else speaker_doa
+    target_yaw = wrap_degrees(start_yaw + turn_degrees)
     start_time = time.time()
 
     print(f"Start yaw: {start_yaw:.1f} deg")
     print(f"Speaker DoA: {speaker_doa:.1f} deg")
+    print(f"Turn degrees: {turn_degrees:.1f} deg")
     print(f"Target yaw: {target_yaw:.1f} deg")
 
     try:
@@ -291,6 +268,75 @@ def rotate_to_doa(sport_client, yaw_reader, speaker_doa):
 
     print("Target reached.")
     return True
+
+
+def rotate_for_command(sport_client, yaw_reader, speaker_doa: Optional[float], allow_action_without_rotation: bool):
+    if speaker_doa is None:
+        print("Skipping DoA rotation because selected_doa is missing or invalid.")
+        return True
+
+    rotated = rotate_to_doa(sport_client, yaw_reader, speaker_doa)
+    if rotated:
+        return True
+
+    if allow_action_without_rotation:
+        print("Continuing command because --allow-command-without-doa is set.")
+        return True
+
+    print("Skipping command because rotation to DoA failed.")
+    return False
+
+
+def execute_sit_command(sport_client, yaw_reader, speaker_doa: Optional[float], allow_action_without_rotation: bool):
+    prepare_balance_stand(sport_client)
+    if not rotate_for_command(sport_client, yaw_reader, speaker_doa, allow_action_without_rotation):
+        return False
+
+    code = sport_client.Damp()
+    print(f"Sit return code: {code}")
+    return True
+
+
+def execute_stand_up_command(sport_client, yaw_reader, speaker_doa: Optional[float], allow_action_without_rotation: bool):
+    print("Executing StandUp before DoA rotation.")
+    stand_up_code = sport_client.StandUp()
+    print(f"StandUp return code: {stand_up_code}")
+    prepare_balance_stand(sport_client)
+    return rotate_for_command(sport_client, yaw_reader, speaker_doa, allow_action_without_rotation)
+
+
+def execute_forward_command(sport_client, yaw_reader, speaker_doa: Optional[float], allow_action_without_rotation: bool):
+    prepare_balance_stand(sport_client)
+    if not rotate_for_command(sport_client, yaw_reader, speaker_doa, allow_action_without_rotation):
+        return False
+
+    code = sport_client.Move(MOVE_SPEED, 0, 0)
+    print(f"Forward return code: {code}")
+    return True
+
+
+def execute_backward_command(sport_client, yaw_reader, speaker_doa: Optional[float], allow_action_without_rotation: bool):
+    prepare_balance_stand(sport_client)
+    if not rotate_for_command(sport_client, yaw_reader, speaker_doa, allow_action_without_rotation):
+        return False
+
+    code = sport_client.Move(-MOVE_SPEED, 0, 0)
+    print(f"Backward return code: {code}")
+    return True
+
+
+def execute_command(sport_client, yaw_reader, test_option, speaker_doa: Optional[float], allow_action_without_rotation: bool):
+    command_handlers = {
+        0: execute_sit_command,
+        1: execute_stand_up_command,
+        6: execute_forward_command,
+        7: execute_backward_command,
+    }
+    handler = command_handlers.get(test_option.id)
+    if handler is None:
+        print(f"No command handler configured for test_id={test_option.id}.")
+        return False
+    return handler(sport_client, yaw_reader, speaker_doa, allow_action_without_rotation)
 
 
 def read_new_events(path: Path, offset: int) -> tuple[List[Dict], int]:
@@ -398,16 +444,26 @@ def main() -> None:
                 )
                 if used_context:
                     print(f"CONTEXT MATCH: {matched_text}")
-                if selected_doa is None or float(selected_doa) < 0:
+                speaker_doa: Optional[float] = None
+                if selected_doa is not None:
+                    try:
+                        speaker_doa = float(selected_doa)
+                    except (TypeError, ValueError):
+                        speaker_doa = None
+
+                if speaker_doa is None or speaker_doa < 0:
                     if not args.allow_command_without_doa:
                         print(f"Skipping command because selected_doa is missing or invalid: {selected_doa}")
                         continue
-                else:
-                    rotated = rotate_to_doa(sport_client, yaw_reader, float(selected_doa))
-                    if not rotated and not args.allow_command_without_doa:
-                        print("Skipping command because rotation to DoA failed.")
-                        continue
-                execute_option(sport_client, test_option)
+                    speaker_doa = None
+
+                execute_command(
+                    sport_client,
+                    yaw_reader,
+                    test_option,
+                    speaker_doa,
+                    args.allow_command_without_doa,
+                )
 
             time.sleep(args.poll_interval)
     except KeyboardInterrupt:

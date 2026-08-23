@@ -183,10 +183,11 @@ def demo_execute_option(test_option):
 
 
 def demo_rotate_to_doa(speaker_doa):
-    direction = "left/positive yaw" if speaker_doa >= 0 else "right/negative yaw"
+    turn_degrees = speaker_doa - 360 if speaker_doa > 180 else speaker_doa
+    direction = "left/positive yaw" if turn_degrees >= 0 else "right/negative yaw"
     print(
         "DEMO ROTATE: would prepare BalanceStand, then rotate "
-        f"{speaker_doa:.1f} deg toward the predicted DoA "
+        f"{turn_degrees:.1f} deg toward the predicted DoA "
         f"using yaw speed {ROTATE_SPEED} ({direction})."
     )
     print("DEMO ROTATE: would stop rotation when target yaw is reached.")
