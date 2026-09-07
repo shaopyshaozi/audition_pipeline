@@ -1,0 +1,13 @@
+{
+  "details_csv": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/ablation_study/baseline/results/HARK_n_loc+sep/pipeline_whisper_small_official_hark_wer_details.csv",
+  "clean_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/clean",
+  "out_csv": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/ablation_study/baseline/results/HARK_n_loc+sep/pipeline_whisper_small_official_hark_selected_pesq_details.csv",
+  "sample_rate": 16000,
+  "pesq_mode": "wb",
+  "total_rows": 400,
+  "scored_rows": 400,
+  "error_rows": 0,
+  "mean_input_wb_pesq": 1.2784825950860976,
+  "mean_wb_pesq": 1.3088156181573867,
+  "mean_wb_pesqi": 0.030333023071289062
+}

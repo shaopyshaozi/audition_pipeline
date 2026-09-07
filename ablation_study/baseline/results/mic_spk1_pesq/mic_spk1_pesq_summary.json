@@ -1,0 +1,15 @@
+{
+  "mic_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/mic",
+  "clean_dir": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/data/dataset_4mic_3spk/Eval/clean",
+  "speaker_id": 1,
+  "clean_glob": "clean_fileid_*_doa*_spk1.wav",
+  "selection_strategy": "match_clean_doa",
+  "mic_channel": 0,
+  "sample_rate": 16000,
+  "pesq_mode": "wb",
+  "total_rows": 400,
+  "scored_rows": 400,
+  "error_rows": 0,
+  "mean_mic_pesq": 1.2784825950860976,
+  "out_csv": "/mnt/d/\u90b5\u9e4f\u8fdc/UCL/\u535a1/code/audition_pipeline/ablation_study/baseline/results/mic_spk1_pesq/mic_spk1_pesq_details.csv"
+}
