@@ -88,3 +88,4 @@ small.pt
 __pycache__/
 *.pyc
 /ablation_study/baseline/results/HARK_n/official_hark_outputs
+/ablation_study/baseline/ODAS/venv_odas

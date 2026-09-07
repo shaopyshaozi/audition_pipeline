@@ -173,7 +173,7 @@ def plot_tracks(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plot ODAS tracked-source JSON output.")
-    parser.add_argument("tracks_json", type=Path, help="Path to tracks_*.json written by ODAS.")
+    parser.add_argument("--tracks_json", type=Path, default='/home/shaozi/ucl/code/audition_pipeline/ablation_study/baseline/ODAS/sep_audios/tracks_fileid_0_doa73_3spk.json', help="Path to tracks_*.json written by ODAS.")
     parser.add_argument(
         "--output",
         type=Path,
