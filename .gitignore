@@ -89,3 +89,5 @@ __pycache__/
 *.pyc
 /ablation_study/baseline/results/HARK_n/official_hark_outputs
 /ablation_study/baseline/ODAS/venv_odas
+/ablation_study/baseline/ODAS/results/ODAS_n_loc+sep+pf/odas_logs
+/ablation_study/baseline/ODAS/results/ODAS_n_loc+sep+pf/odas_outputs
