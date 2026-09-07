@@ -10,7 +10,7 @@ the localisation and separation system:
         -> 3 mono ODAS output slots
         -> predicted DoA per slot from tracks_*.json
         -> choose the predicted DoA nearest to spk1's *ground-truth* DoA
-        -> Whisper small, WER, SDRi, and SI-SDRi
+        -> Whisper small, WER, SDRi, SI-SDRi, and wideband PESQ
 
 The DoA selection is ground-truth assisted and must be reported as such.  It
 is directly comparable to the HARK IPD baseline's ``nearest_spk1_gt_doa``
@@ -166,12 +166,24 @@ def sdr_db(prediction: np.ndarray, target: np.ndarray, eps: float = 1e-8) -> flo
     return float(10.0 * np.log10((np.sum(target**2) + eps) / (np.sum((target - prediction) ** 2) + eps)))
 
 
+def wb_pesq_score(reference: np.ndarray, degraded: np.ndarray, sample_rate: int) -> float:
+    """Compute PESQ-WB, using the same 16-kHz convention as other baselines."""
+    if sample_rate != 16000:
+        raise ValueError("Wideband PESQ requires a 16-kHz sample rate.")
+    from pesq import pesq
+
+    length = min(len(reference), len(degraded))
+    if length <= 0:
+        raise ValueError("PESQ requires non-empty reference and degraded signals.")
+    return float(pesq(sample_rate, reference[:length], degraded[:length], "wb"))
+
+
 def compute_audio_quality_metrics(
     enhanced: np.ndarray,
     clean_path: Optional[Path],
     noisy_reference: np.ndarray,
     sample_rate: int,
-) -> Dict[str, Optional[float]]:
+) -> Dict[str, object]:
     empty = {
         "input_sdr": None,
         "sdr": None,
@@ -179,6 +191,10 @@ def compute_audio_quality_metrics(
         "input_si_sdr": None,
         "si_sdr": None,
         "si_sdr_i": None,
+        "input_wb_pesq": None,
+        "wb_pesq": None,
+        "wb_pesq_i": None,
+        "pesq_error": "",
     }
     if clean_path is None:
         return empty
@@ -193,6 +209,14 @@ def compute_audio_quality_metrics(
     output_sdr = sdr_db(enhanced, clean)
     input_si_sdr = si_sdr_db(noisy_reference, clean)
     output_si_sdr = si_sdr_db(enhanced, clean)
+    try:
+        input_wb_pesq = wb_pesq_score(clean, noisy_reference, sample_rate)
+        wb_pesq = wb_pesq_score(clean, enhanced, sample_rate)
+        pesq_error = ""
+    except Exception as exc:
+        input_wb_pesq = None
+        wb_pesq = None
+        pesq_error = f"{type(exc).__name__}: {exc}"
     return {
         "input_sdr": input_sdr,
         "sdr": output_sdr,
@@ -200,6 +224,14 @@ def compute_audio_quality_metrics(
         "input_si_sdr": input_si_sdr,
         "si_sdr": output_si_sdr,
         "si_sdr_i": output_si_sdr - input_si_sdr,
+        "input_wb_pesq": input_wb_pesq,
+        "wb_pesq": wb_pesq,
+        "wb_pesq_i": (
+            wb_pesq - input_wb_pesq
+            if wb_pesq is not None and input_wb_pesq is not None
+            else None
+        ),
+        "pesq_error": pesq_error,
     }
 
 
@@ -268,6 +300,10 @@ class EvalRecord:
     input_si_sdr: Optional[float]
     si_sdr: Optional[float]
     si_sdr_i: Optional[float]
+    input_wb_pesq: Optional[float]
+    wb_pesq: Optional[float]
+    wb_pesq_i: Optional[float]
+    pesq_error: str
     reference: str
     hypothesis: str
     whisper_sec: float
@@ -648,6 +684,10 @@ def evaluate_odas(args: argparse.Namespace) -> List[EvalRecord]:
                 input_si_sdr=metrics["input_si_sdr"],
                 si_sdr=metrics["si_sdr"],
                 si_sdr_i=metrics["si_sdr_i"],
+                input_wb_pesq=metrics["input_wb_pesq"],
+                wb_pesq=metrics["wb_pesq"],
+                wb_pesq_i=metrics["wb_pesq_i"],
+                pesq_error=str(metrics["pesq_error"]),
                 reference=reference,
                 hypothesis=hypothesis,
                 whisper_sec=whisper_sec,
@@ -657,11 +697,12 @@ def evaluate_odas(args: argparse.Namespace) -> List[EvalRecord]:
                 under_realtime=int(whisper_sec < duration),
             )
         )
+        pesq_text = f"{float(metrics['wb_pesq']):.3f}" if metrics["wb_pesq"] is not None else "N/A"
         print(
             f"fileid={fileid} spk1: GT DoA={ref.gt_doa}°, "
             f"selected slot={selected_slot}, predicted DoA={predicted_doa:.1f}°, "
             f"DoA error={circular_angle_error_deg(predicted_doa, ref.gt_doa):.1f}°, "
-            f"WER={sample_wer:.4f}"
+            f"WER={sample_wer:.4f}, PESQ-WB={pesq_text}"
         )
 
     details = args.out_dir / f"pipeline_whisper_{args.whisper_model}_odas_wer_details_spk1.csv"
@@ -681,6 +722,7 @@ def evaluate_odas(args: argparse.Namespace) -> List[EvalRecord]:
             "target_speaker_id": 1,
             "whisper_model": args.whisper_model,
             "whisper_device": args.whisper_device,
+            "pesq_mode": "wb",
             "warmup_seconds": args.warmup_seconds,
             "min_activity": args.min_activity,
             "skipped": dict(skipped),
@@ -694,6 +736,15 @@ def evaluate_odas(args: argparse.Namespace) -> List[EvalRecord]:
     print(f"Mean sample WER: {summary['mean_sample_wer']:.4f}")
     print(f"Mean SDRi: {summary['mean_sdri']:.4f}")
     print(f"Mean SI-SDRi: {summary['mean_sisdri']:.4f}")
+    if summary["pesq_scored_utterances"]:
+        print(f"Mean PESQ-WB: {summary['mean_wb_pesq']:.4f}")
+        print(f"Mean PESQ-WB improvement: {summary['mean_wb_pesqi']:.4f}")
+    else:
+        print("Mean PESQ-WB: N/A (install the Python 'pesq' package; see pesq_error in the CSV)")
+    print(
+        f"PESQ-scored utterances: {summary['pesq_scored_utterances']} / {summary['evaluated_utterances']} "
+        f"(errors: {summary['pesq_error_utterances']})"
+    )
     print(f"Saved details: {details}")
     print(f"Saved summary: {summary_path}")
     return records
@@ -717,6 +768,11 @@ def summarize(rows: Sequence[EvalRecord]) -> Dict[str, float | int]:
         "mean_input_si_sdr": mean_optional("input_si_sdr"),
         "mean_si_sdr": mean_optional("si_sdr"),
         "mean_sisdri": mean_optional("si_sdr_i"),
+        "mean_input_wb_pesq": mean_optional("input_wb_pesq"),
+        "mean_wb_pesq": mean_optional("wb_pesq"),
+        "mean_wb_pesqi": mean_optional("wb_pesq_i"),
+        "pesq_scored_utterances": sum(row.wb_pesq is not None for row in rows),
+        "pesq_error_utterances": sum(bool(row.pesq_error) for row in rows),
         "mean_whisper_sec": mean_optional("whisper_sec"),
         "mean_total_rtf": mean_optional("total_rtf"),
         "under_realtime_count": sum(row.under_realtime for row in rows),
@@ -733,6 +789,8 @@ def main() -> None:
         raise FileNotFoundError(f"ODAS config template not found: {args.cfg_template}")
     if args.num_sources != 3:
         raise ValueError("This runner currently expects the three-slot ODAS configuration (num_sources=3).")
+    if args.sample_rate != 16000:
+        raise ValueError("This runner computes PESQ-WB and therefore requires --sample_rate 16000.")
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.mode in ("run_odas", "both"):
